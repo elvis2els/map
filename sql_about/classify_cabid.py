@@ -20,9 +20,9 @@ def createResult(results):
     return lines
 
 
-def main():
+def main(filename, j):
     path = '/dataPool/map/2015cabGPS_splitpath/'
-    day = '20151030'
+    day = filename[1:9]
     try:
         conn = MySQLdb.connect("127.0.0.1", "root", "369212hyl", "cabgps")
     except:
@@ -36,7 +36,7 @@ def main():
     i = 1
     for cabid in cabids:
         cabid = cabid.strip('\n')
-        start = time.time()
+        begin = time.time()
         selectSQL = 'select * from d%s where cabid=\'%s\' order by time;' % (
             day, cabid)
         try:
@@ -48,11 +48,15 @@ def main():
         ofs = open(path + cabid + '/' + day + '.txt', 'w')
         ofs.writelines(results)
         ofs.close()
-        print '[%d]Success %s: %s................%.2f\%' % (i, cabid, time.time() - start, float(i) / max * 100)
+        print '[%d][%d]Success %s: %.2f.................%.2f%%  sum time: %s' % (j, i, cabid, time.time() - begin, float(i) / max * 100, time.time() - start)
         i += 1
+    conn.close()
 
-
+start = time.time()
 if __name__ == '__main__':
-    start = time.time()
-    main()
+    days = os.listdir('/dataPool/map/inputfile/')
+    j = 1
+    for day in days:
+        main(day, j)
+        j += 1
     print time.time() - start

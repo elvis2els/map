@@ -8,7 +8,6 @@ import MySQLdb
 
 def main():
     path = '/dataPool/map/achive/'
-    filelist = os.
     for file in filelist:
         print file
     return

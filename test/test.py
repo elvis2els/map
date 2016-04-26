@@ -7,10 +7,13 @@ import MySQLdb
 
 
 def main():
-    path = '/dataPool/map/achive/'
-    for file in filelist:
-        print file
-    return
+    path = '/dataPool/map/2015cabGPS_splitpath/'
+    os.chdir(path)
+    dirnames = os.listdir(path)
+    for dirname in dirnames:
+        if len(os.listdir(path + dirname)) == 0:
+            os.rmdir(dirname)
+
 
 if __name__ == '__main__':
     start = time.time()

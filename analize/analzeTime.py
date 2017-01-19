@@ -2,7 +2,6 @@
 # -*- coding:utf-8 -*-
 import time
 import os
-import sys
 
 path = '/dataPool/map/2015cabGPS_splitpath/'
 outputPath = '/dataPool/map/analizeTime/'

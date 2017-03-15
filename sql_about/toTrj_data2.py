@@ -37,7 +37,7 @@ def main():
             cursor.execute(sql)
             metaRows = cursor.fetchall()
             print("获取metaRows时间:{}s".format(time.time()-startTime))
-        
+
         insertSQL = 'insert into traj_data (metadata_id, cross_id, time)'
         insertSQL = insertSQL + 'values(%s,%s,%s);'
         trajNum = 0
@@ -54,12 +54,14 @@ def main():
                     for value in appends:
                         values.append(value)
                 trajNum += 1
-                if trajNum == 1000:
+                if trajNum == maxNum:
                     cursor.executemany(insertSQL, values)
                     values = []
                     trajNum = 0
                 i += 1
                 pbar.update(i)
+            if values:
+                cursor.executemany(insertSQL, values)
         connection.commit()
 
     finally:

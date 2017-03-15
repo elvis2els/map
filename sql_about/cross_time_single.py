@@ -3,6 +3,7 @@
 
 import argparse
 import datetime
+import os
 import time
 import traceback
 
@@ -13,6 +14,7 @@ import pymysql
 parser = argparse.ArgumentParser(description="获取两个路口间行驶时间")
 parser.add_argument('start', help="起始路口号")
 parser.add_argument('end', help="终止路口号")
+parser.add_argument('path', help='输出文件路径,文件名默认{start}to{end}.csv')
 args = parser.parse_args()
 
 
@@ -56,7 +58,6 @@ def main():
     end_df = pd.DataFrame(list(end_result), columns=['meta_id', 'time'])
 
     merge_df = pd.merge(start_df, end_df, on='meta_id')
-    print(merge_df)
     merge_df['counts'] = merge_df.groupby(
         ['meta_id'])['meta_id'].transform(len)
     # 删除出现两次以上和start_time<end_time的数据
@@ -65,9 +66,9 @@ def main():
     del merge_df['counts']
 
     merge_df['duration'] = merge_df.time_y - merge_df.time_x
-    print(merge_df)
 
-    merge_df.to_csv('test.csv')
+    merge_df.to_csv(os.path.join(
+        args.path, '{}to{}.csv'.format(args.start, args.end)))
 
 if __name__ == '__main__':
     main()

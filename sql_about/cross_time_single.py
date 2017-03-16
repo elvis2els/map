@@ -60,7 +60,7 @@ def main():
     merge_df = pd.merge(start_df, end_df, on='meta_id')
     merge_df['counts'] = merge_df.groupby(
         ['meta_id'])['meta_id'].transform(len)
-    # 删除出现两次以上和start_time<end_time的数据
+    # 删除出现两次以上和start_time>end_time的数据
     merge_df = merge_df[merge_df.counts == 1 &
                         (merge_df.time_x < merge_df.time_y)]
     del merge_df['counts']
@@ -68,7 +68,9 @@ def main():
     merge_df['duration'] = merge_df.time_y - merge_df.time_x
 
     merge_df.to_csv(os.path.join(
-        args.path, '{}to{}.csv'.format(args.start, args.end)))
+        args.path, '{}to{}.csv'.format(args.start, args.end)), index=False)
+
+    print("最终长度：{}".format(len(merge_df)))
 
 if __name__ == '__main__':
     main()

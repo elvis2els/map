@@ -14,7 +14,8 @@ import pymysql
 parser = argparse.ArgumentParser(description="获取两个路口间行驶时间")
 parser.add_argument('start', help="起始路口号")
 parser.add_argument('end', help="终止路口号")
-parser.add_argument('path', help='输出文件路径,文件名默认{start}to{end}.csv')
+parser.add_argument('-o', '--output', default='~/map/analize/analizeTime/countXEntTime/',
+                    help='输出文件路径,文件为{output}/{start}to{end}/{start}to{end}.csv,默认output为~/map/analize/analizeTime/countXEntTime/')
 args = parser.parse_args()
 
 
@@ -30,23 +31,16 @@ def getCrossRows(connection, crossId):
 def main():
     connection = pymysql.connect('localhost', 'root', '369212', 'path_restore')
 
-    startQuery = "SELECT metadata_id, time FROM traj_data WHERE cross_id={}".format(
-        args.start)
-    endQuery = "SELECT metadata_id, time FROM traj_data WHERE cross_id={}".format(
-        args.end)
-
     try:
         start_time = time.time()
         start_result = getCrossRows(connection, args.start)
-        start_ids = [start_id[0] for start_id in start_result]
         print("start_ids用时：{}".format(time.time() - start_time))
-        print("start_id长度:{}".format(len(start_ids)))
+        print("start_id长度:{}".format(len(start_result)))
 
         start_time = time.time()
         end_result = getCrossRows(connection, args.end)
-        end_ids = [end_id[0] for end_id in end_result]
         print("end_ids用时：{}".format(time.time() - start_time))
-        print("end_ids长度:{}".format(len(end_ids)))
+        print("end_ids长度:{}".format(len(end_result)))
 
     except:
         traceback.print_exc()
@@ -67,8 +61,12 @@ def main():
 
     merge_df['duration'] = merge_df.time_y - merge_df.time_x
 
-    merge_df.to_csv(os.path.join(
-        args.path, '{}to{}.csv'.format(args.start, args.end)), index=False)
+    out_dir = os.path.join(
+        args.output, '{}to{}'.format(args.start, args.end))
+    if not os.path.exists(out_dir):
+        os.makedirs(out_dir)
+    merge_df.to_csv(os.path.join(out_dir, '{}to{}.csv'.format(
+        args.start, args.end)), index=False)
 
     print("最终长度：{}".format(len(merge_df)))
 

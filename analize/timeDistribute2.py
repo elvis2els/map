@@ -1,4 +1,4 @@
-#!/usr/bin/python3
+#!/usr/local/bin/python3
 # -*- coding: UTF-8 -*-
 import argparse
 import datetime as dt
@@ -30,6 +30,9 @@ def main():
     df['duration'] = df['duration'] / np.timedelta64(1, 's')
     print(df.head())
     print(df.dtypes)
+
+    plt.plot(df['time_x'], df['duration'], 'ob')
+    plt.show()
 
     # print(df['duration'] / np.timedelta64(1, 's'))
 

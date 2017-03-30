@@ -8,8 +8,17 @@ class ARIMA(object):
 
     def __init__(self, path):
         self.path = path
-        self.data = pd.read_csv(path, index_col='time_group', names=[
-                                'time_group', 'duration'])
+        df = pd.read_csv(path, index_col='time_group', names=[
+            'time_group', 'duration'])
+        self.data = self.fillna(df)
+
+    def fillna(self, df):
+        first_index, last_index = df.index.get_values()[
+            0], df.index.get_values()[-1]
+        indexlist = [x for x in range(first_index, last_index + 1)]
+        df = pd.Series(np.nan, index=indexlist).add(
+            df['duration'], fill_value=0).fillna(method='pad')
+        return pd.DataFrame(df, index=df.index, columns=['duration'])
 
     def printADF(self, df):
         t = sm.tsa.stattools.adfuller(np.array(df['duration']))
@@ -102,7 +111,7 @@ class ARIMA(object):
         self.normal_analize(data_logdiff)
 
         p, q = self.select_order(data_logdiff)
-        order = (p,1,q)
+        order = (p, 1, q)
         print('order={}'.format(order))
         model = sm.tsa.ARIMA(np.array(data_log['duration']), order).fit()
         print(model.summary())
@@ -115,5 +124,3 @@ class ARIMA(object):
         self.draw_compare(data_logdiff, predictions_logdiff)
         self.draw_compare(data_log, predictions_log)
         self.draw_compare(self.data, predictions)
-
-        

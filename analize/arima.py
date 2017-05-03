@@ -1,3 +1,6 @@
+import configparser
+import os
+
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -8,9 +11,34 @@ class ARIMA(object):
 
     def __init__(self, path):
         self.path = path
+        self.weekday = os.path.splitext(os.path.basename(path))[0]
         df = pd.read_csv(path, index_col='time_group', names=[
             'time_group', 'duration'])
         self.data = self.fillna(df)
+        self.conf = os.path.join(os.path.dirname(path), 'default.conf')
+        if not os.path.exists(self.conf):
+            with open(self.conf, 'w') as f:
+                config = configparser.ConfigParser()
+                config.read(self.conf)
+                config.add_section('weekday')
+                config.add_section('weekend')
+                config.write(f)
+
+    def getConf(self, df, option):
+        config = configparser.ConfigParser()
+        config.read(self.conf)
+        opts = config.options(self.weekday)
+        if option in opts:
+            return eval(config.get(self.weekday, option))
+        else:
+            p, q = self.select_order(df)
+            if option in ['diff', 'logdiff']:
+                order = (p, 1, q)
+            else:
+                order = (p, q)
+            config.set(self.weekday, option, str(order))
+            config.write(open(self.conf, 'w'))
+            return order
 
     def fillna(self, df):
         first_index, last_index = df.index.get_values()[
@@ -55,6 +83,10 @@ class ARIMA(object):
 
     def restore_diff(self, df, df_proceed):
         predictions_proceed_cumsum = df_proceed.cumsum()
+
+        # print(df_proceed)
+        # print(predictions_proceed_cumsum)
+
         predictions = pd.Series(df['duration'].iloc[
                                 0], index=self.data.index)
         predictions = predictions.add(
@@ -76,8 +108,10 @@ class ARIMA(object):
         data_diff = self.data.diff().dropna()
         self.normal_analize(data_diff)
 
-        p, q = self.select_order(data_diff)
-        order = (p, 1, q)
+        # print(data_diff)
+        # print(data_diff.cumsum())
+
+        order = self.getConf(data_diff, 'diff')
         print('order={}'.format(order))
         model = sm.tsa.ARIMA(np.array(self.data['duration']), order).fit()
         print(model.summary())
@@ -89,11 +123,12 @@ class ARIMA(object):
         self.draw_compare(data_diff, predictions_diff)
         self.draw_compare(self.data, predictions)
 
+
     def arima_log(self):
         data_log = np.log(self.data)
         self.normal_analize(data_log)
 
-        order = self.select_order(data_log)
+        order = self.getConf(data_log, 'log')
         print('order={}'.format(order))
         model = sm.tsa.ARMA(np.array(data_log['duration']), order).fit()
         print(model.summary())
@@ -105,13 +140,13 @@ class ARIMA(object):
         self.draw_compare(data_log, predictions_log)
         self.draw_compare(self.data, predictions)
 
+    
     def arima_logdiff(self):
         data_log = np.log(self.data)
         data_logdiff = data_log.diff().dropna()
         self.normal_analize(data_logdiff)
 
-        p, q = self.select_order(data_logdiff)
-        order = (p, 1, q)
+        order = self.getConf(data_logdiff, 'logdiff')
         print('order={}'.format(order))
         model = sm.tsa.ARIMA(np.array(data_log['duration']), order).fit()
         print(model.summary())

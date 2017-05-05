@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-parser = argparse.ArgumentParser(description="show time distribute")
+parser = argparse.ArgumentParser(description="filter outlier data")
 parser.add_argument('file', help="the file of time duration")
 args = parser.parse_args()
 
@@ -36,7 +36,7 @@ def main():
 
     df['duration'] = df['duration'] / np.timedelta64(1, 's')
     df['time_group'] = ((df['time_x'].dt.hour * 60 +
-                         df['time_x'].dt.minute) / 5).apply(math.ceil)
+                         df['time_x'].dt.minute) / 15).apply(math.ceil)
 
     print("原始长度： {}".format(len(df)))
     grouped = df.groupby('time_group')
@@ -45,7 +45,7 @@ def main():
     df['outlier'] = df.apply(is_outlier, axis=1, args=(statBefore,))
     df = df[~(df.outlier)]
     df['weekday'] = df['time_x'].dt.weekday
-    del df['outlier'], df['time_x'], df['time_y']
+    del df['outlier']
     print("filtered长度： {}".format(len(df)))
 
     dirname = os.path.dirname(args.file)
@@ -55,8 +55,10 @@ def main():
 
     df_weekday = df[df['weekday'] < 6]
     df_weekend = df[df['weekday'] >= 6]
-    mean_to_csv(df_weekday, os.path.join(dirname, 'weekday.csv'))
-    mean_to_csv(df_weekend, os.path.join(dirname, 'weekend.csv'))
+    df_weekday.to_csv(os.path.join(dirname, 'weekday.csv'), index=False)
+    df_weekend.to_csv(os.path.join(dirname, 'weekend.csv'), index=False)
+    # mean_to_csv(df_weekday, os.path.join(dirname, 'weekday.csv'))
+    # mean_to_csv(df_weekend, os.path.join(dirname, 'weekend.csv'))
 
 
 

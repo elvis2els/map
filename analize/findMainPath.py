@@ -7,11 +7,11 @@ import os
 import time
 import traceback
 
+import matplotlib.pyplot as plt
 import networkx as nx
 import numpy as np
 import pandas as pd
 import pymysql
-import matplotlib.pyplot as plt
 
 from Config import Config
 
@@ -54,11 +54,12 @@ def addGraph(G, traj_df):
     # 轨迹存入Graph中
     cross_ids = list(traj_df['cross_id'])
     edges = [(s, e) for s, e in zip(cross_ids[:-1], cross_ids[1:])]
-    G.add_edges_from(edges)
-    # print(list(G.nodes()))
-    # print(list(G.edges()))
-    nx.draw_circular(G)
-    plt.show()
+    for edge in edges:
+        if G.has_edge(*edge):
+            G[edge[0]][edge[1]]['weight'] += 1
+        else:
+            G.add_edge(edge[0], edge[1], weight=1)
+    # G.add_path(list(traj_df['cross_id']))
 
 def analizeSingleMainPath(connection, metadatas, timegroup):
     G = nx.DiGraph()
@@ -67,7 +68,14 @@ def analizeSingleMainPath(connection, metadatas, timegroup):
         for ix, metadata in metadata_timegroup.iterrows():
             traj_df = getTraj(connection, metadata)
             addGraph(G, traj_df)
-            exit()
+            # drawGraph(G)
+
+def drawGraph(G):
+    pos = nx.fruchterman_reingold_layout(G)
+    edge_labels = dict([((u,v,), d['weight']) for u,v,d in G.edges(data=True)])
+    nx.draw(G, pos, with_labels=True)
+    nx.draw_networkx_edge_labels(G, pos, edge_labels=edge_labels)
+    plt.show()
 
 def analizeAllMainPath(connection, metadatas):
     first_timegroup, last_timegroup = metadatas[

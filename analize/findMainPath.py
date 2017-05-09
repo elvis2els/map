@@ -12,6 +12,7 @@ import networkx as nx
 import numpy as np
 import pandas as pd
 import pymysql
+from progressbar import ETA, Bar, FileTransferSpeed, Percentage, ProgressBar
 
 from Config import Config
 
@@ -24,6 +25,8 @@ parser.add_argument('-f', '--file', default='/home/elvis/map/analize/analizeTime
 parser.add_argument('-o', '--output', default='/home/elvis/map/analize/analizePath',
                     help='输出文件路径,文件为{output}/{start}to{end}/{start}to{end}.csv,默认output为~/map/analize/analizePath/')
 args = parser.parse_args()
+
+widgets = ['Insert: ', Percentage(), ' ', Bar(marker='#'), ' ', ETA()]
 
 
 def getMetadata_df():
@@ -61,6 +64,23 @@ def addGraph(G, traj_df):
             G.add_edge(edge[0], edge[1], weight=1)
     # G.add_path(list(traj_df['cross_id']))
 
+def getPathWeight(G, path):
+    return sorted([G[s][e]['weight'] for s,e in zip(path[:-1], path[1:])])
+        
+
+def MFP(G, start, end):
+    mfp = mfp_w = []
+    for path in nx.all_simple_paths(G, start, end):
+        mfp_w_tmp = getPathWeight(G, path)
+        if not mfp:
+            mfp = path           
+            mfp_w = mfp_w_tmp
+        else:
+            if mfp_w < mfp_w_tmp:
+                mfp = path
+                mfp_w = mfp_w_tmp
+    return mfp
+
 def analizeSingleMainPath(connection, metadatas, timegroup):
     G = nx.DiGraph()
     metadata_timegroup = metadatas[metadatas.time_group == timegroup]
@@ -68,21 +88,28 @@ def analizeSingleMainPath(connection, metadatas, timegroup):
         for ix, metadata in metadata_timegroup.iterrows():
             traj_df = getTraj(connection, metadata)
             addGraph(G, traj_df)
-            # drawGraph(G)
+        # drawGraph(G)
+        return MFP(G, int(args.start), int(args.end))
+
 
 def drawGraph(G):
-    pos = nx.fruchterman_reingold_layout(G)
-    edge_labels = dict([((u,v,), d['weight']) for u,v,d in G.edges(data=True)])
+    pos = nx.spring_layout(G)
+    edge_labels = dict([((u, v,), d['weight'])
+                        for u, v, d in G.edges(data=True)])
     nx.draw(G, pos, with_labels=True)
     nx.draw_networkx_edge_labels(G, pos, edge_labels=edge_labels)
     plt.show()
 
+
 def analizeAllMainPath(connection, metadatas):
     first_timegroup, last_timegroup = metadatas[
         'time_group'].iloc[0], metadatas['time_group'].iloc[-1]
+    pbar = ProgressBar(
+        widgets=widgets, maxval=last_timegroup - first_timegroup + 1).start()
     for timegroup in range(first_timegroup, last_timegroup + 1):
-        analizeSingleMainPath(connection, metadatas, timegroup)
-
+        path = analizeSingleMainPath(connection, metadatas, timegroup)
+        # print(path)
+        pbar.update(timegroup - first_timegroup + 1)
 
 def main():
     metadatas = getMetadata_df()

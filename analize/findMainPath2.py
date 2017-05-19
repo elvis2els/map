@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 # -*- coding: UTF-8 -*-
 
-# 分析同时经过s和e的轨迹的主路段
+# 分析经过s or e的轨迹的主路段
 
 import argparse
 import datetime
@@ -29,21 +29,20 @@ parser.add_argument('-o', '--output', default='/home/elvis/map/analize/analizePa
 args = parser.parse_args()
 
 widgets = ['Insert: ', Percentage(), ' ', Bar(marker='#'), ' ', ETA()]
+config = Config()
 
 
-def getMetadata_df():
-    # 获取已经处理过的同时经过这两个路口的轨迹id
-    filepath = os.path.join(args.file, '{}to{}'.format(args.start, args.end))
-    filename = '{}.csv'.format(args.weekday)
-    metaId_file = os.path.join(filepath, filename)
-    if not os.path.exists(filepath):
-        print('metaid文件不存在')
+def getEstTime():
+    # 获取通过这两点的时间估计
+    filedir_name = '{}to{}'.format(args.start, args.end)
+    file_home = os.path.join(config.getConf('analizeTime')['homepath'], filedir_name)
+    file_path = os.path.join(file_home, '{}-time.csv'.format(args.weekday))
+    if not os.path.exists(file_path):
+        print('{}-time.csv文件不存在'.format(args.weekday))
         exit()
 
-    def dateparse(x): return pd.datetime.strptime(x, '%Y-%m-%d %H:%M:%S.%f')
-    df = pd.read_csv(metaId_file, parse_dates=[
-                     'time_x', 'time_y'], date_parser=dateparse).drop(['duration', 'weekday'], axis=1)
-    return df.sort_values(by='time_group')
+    df = pd.read_csv(file_path, names=['time_group', 'duration'])
+    return df
 
 
 def getTraj(connection, metadata):
@@ -106,29 +105,37 @@ def drawGraph(G):
     plt.show()
 
 
-def analizeAllMainPath(connection, metadatas):
-    first_timegroup, last_timegroup = metadatas[
-        'time_group'].iloc[0], metadatas['time_group'].iloc[-1]
-    pbar = ProgressBar(
-        widgets=widgets, maxval=last_timegroup - first_timegroup + 1).start()
+def getIdByCross(connection, est_time=None):
+    pass
+
+
+def analizeAllMainPath(connection, est_time):
+    first_timegroup, last_timegroup = est_time[
+        'time_group'].iloc[0], est_time['time_group'].iloc[-1]
+
+    # pbar = ProgressBar(
+    #     widgets=widgets, maxval=last_timegroup - first_timegroup + 1).start()
     for timegroup in range(first_timegroup, last_timegroup + 1):
-        path = analizeSingleMainPath(connection, metadatas, timegroup)
+        path = analizeSingleMainPath(connection, est_time, timegroup)
         # print(path)
-        pbar.update(timegroup - first_timegroup + 1)
+        # pbar.update(timegroup - first_timegroup + 1)
+
+
+def get(parameter_list):
+    pass
 
 
 def main():
-    metadatas = getMetadata_df()
-
-    conf = Config()
-    database_conf = conf.getConf('database')
+    est_time = getEstTime()
+    database_conf = config.getConf('database')
     connection = pymysql.connect(
-        database_conf['host'], database_conf['user'], database_conf['passwd'], database_conf['name'])
+        database_conf['host'], database_conf['user'], 
+        database_conf['passwd'], database_conf['name'])
     print('#数据库连接成功')
 
     try:
         all_start_time = time.time()
-        analizeAllMainPath(connection, metadatas)
+        analizeAllMainPath(connection, est_time)
 
         print('总时长: {}s'.format(time.time() - all_start_time))
     # except Exception as e:

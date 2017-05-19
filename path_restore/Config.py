@@ -12,7 +12,9 @@ class Config(object):
                                   'passwd': '369212',
                                   'name': 'path_restore'}
             config['analizeTime'] = {
-                'homepath': '/home/elvis/map/analize/analizeTime/countXEntTime/'}
+                'homepath': '/home/elvis/map/analize/analizeTime/countXEntTime/',
+                'time_interval': 15,
+                'time_factor': 1.3}
             with open(self.conf, 'w') as configfile:
                 config.write(configfile)
 

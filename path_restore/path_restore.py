@@ -8,6 +8,7 @@ import networkx as nx
 import numpy as np
 import pandas as pd
 import pymysql
+import matplotlib.pyplot as plt
 
 from Config import Config
 
@@ -117,9 +118,10 @@ class EstTime(object):
 
 
 class MainRoad(object):
-    def __init__(self, estTime_df):
+    def __init__(self, estTime_df, show_detail=False):
         self.config = Config()
         self.estTime_df = estTime_df
+        self.show_detail = show_detail
         database_conf = self.config.getConf('database')
         self.connection = pymysql.connect(
             database_conf['host'],
@@ -166,16 +168,40 @@ class MainRoad(object):
             cross_id = [c_id for c_id, time in traj]
             return pd.DataFrame({'start_id': cross_id[:-1], 'end_id': cross_id[1:], 'time_group': time_group})
 
-        def gen_graph(traj_df, time_group):
-            """根据指定的时间分组生成图"""
-            traj_grouped_df = traj_df[traj_df['time_group'] == time_group]
-            G = nx.DiGraph()
-            for ix, traj in traj_df.iterrows():
-                edge = (traj['start_id'], traj['end_id'])
+        def drawGraph(G):
+            pos = nx.spring_layout(G)
+            edge_labels = dict([((u, v,), d['weight'])
+                                for u, v, d in G.edges(data=True)])
+            nx.draw(G, pos, with_labels=True)
+            nx.draw_networkx_edge_labels(G, pos, edge_labels=edge_labels)
+            plt.show()
+
+        def add_graph(G, df):
+            df_filter = df[df > 1]
+            i = 1
+            maxlen = len(df)
+            for cross, weight in df.iteritems():
+                if self.show_detail:
+                    if i % np.floor(maxlen / 10) == 0:
+                        print("{}/{}".format(i, maxlen))
+                    i += 1
+                if cross[0] == cross[1]:
+                    continue
+                edge = (cross[0], cross[1])
                 if G.has_edge(*edge):
-                    G[edge[0]][edge[1]]['weight'] += 1
+                    G[edge[0]][edge[1]]['weight'] += weight
                 else:
-                    G.add_edge(edge[0], edge[1], weight=1)
+                    G.add_edge(edge[0], edge[1], weight=weight)
+
+        def gen_graph(traj_start_df, traj_end_df, time_group):
+            """根据指定的时间分组生成图"""
+            trajs_group_df = traj_start_df[traj_start_df['time_group'] == time_group]
+            gbs = trajs_group_df.groupby(['start_id', 'end_id']).apply(len)
+            G = nx.DiGraph()
+            add_graph(G, gbs)
+            traje_group_df = traj_end_df[traj_end_df['time_group'] == time_group]
+            gbe = traje_group_df.groupby(['start_id', 'end_id']).apply(len)
+            add_graph(G, gbe)
             return G
 
         def get_traj(meta_ids, kind):
@@ -183,27 +209,88 @@ class MainRoad(object):
             if not kind in ['start', 'end']:
                 print('filter_traj参数错误')
                 exit()
+            filebase = '{}to{}'.format(start_id, end_id)
+            dirpath = os.path.join(self.config.getConf(
+                'analizeTime')['homepath'], filebase)
+            filepath = os.path.join(dirpath, 'traj-{}.csv'.format(kind))
+            if os.path.exists(filepath):
+                traj_df = pd.read_csv(filepath)
+                return traj_df
             traj_df = pd.DataFrame(
                 columns=['start_id', 'end_id', 'time_group'])
+
+            i = 1
+            maxlen = len(meta_ids)
             for meta_id, time in meta_ids:
+                if self.show_detail:
+                    if i % np.floor(maxlen / 10) == 0:
+                        print("{}/{}".format(i, maxlen))
+                    i += 1
                 traj_df = pd.concat([traj_df, traj_in_time(
                     meta_id, time, kind)], ignore_index=True)
+            traj_df.to_csv(filepath, index=False)
             return traj_df
 
-        def gen_detail_graph(start_meta_id, end_meta_id):
-            """分别生成s出发和e到达的图，合并有效部分"""
-            traj_df = get_traj(start_meta_id, 'start')
-            first_timegroup, last_timegroup = self.estTime_df.first_valid_index(), self.estTime_df.last_valid_index()
+        def getPathWeight(G, path):
+            """获取path中路径权值并排序"""
+            return sorted([G[s][e]['weight'] for s, e in zip(path[:-1], path[1:])])
+
+        def MFP(G):
+            """使用MFP查找主路径"""
+            mfp = mfp_w = []
+            i = 0
+            for path in nx.all_simple_paths(G, start_id, end_id):
+                i += 1
+                mfp_w_tmp = getPathWeight(G, path)
+                if not mfp:
+                    mfp = path
+                    mfp_w = mfp_w_tmp
+                else:
+                    if mfp_w < mfp_w_tmp:
+                        mfp = path
+                        mfp_w = mfp_w_tmp
+            print("path数量：{}".format(i))
+            return mfp
+        
+        def filter_graph(G):
+            from_s = nx.descendants(G, start_id)
+            from_s.add(start_id)
+            to_e = nx.ancestors(G, end_id)
+            to_e.add(end_id)
+            del_cross = (from_s | to_e) - (from_s & to_e)
+            G.remove_nodes_from(del_cross)
+
+        def find_main_path(start_meta_id, end_meta_id):
+            """分别生成s出发和e到达的图，合并有效部分,根据合成的部分得到主路径"""
+            traj_start_df = get_traj(start_meta_id, 'start')
+            traj_end_df = get_traj(end_meta_id, 'end')
+            first_timegroup, last_timegroup = self.estTime_df.first_valid_index(
+            ), self.estTime_df.last_valid_index()
+            mfp_all = []
             for time_group in range(first_timegroup, last_timegroup + 1):
-                gen_graph(traj_df, time_group)
-            exit()
+                G = gen_graph(traj_start_df, traj_end_df, time_group)
+                drawGraph(G)
+                print('node:{}, edge:{}'.format(G.number_of_nodes(), G.number_of_edges()))
+                filter_graph(G)
+                drawGraph(G)
+                print('node:{}, edge:{}'.format(G.number_of_nodes(), G.number_of_edges()))
+                mfp = MFP(G)
+                if not mfp_all:
+                    mfp_all.append([[time_group, time_group], mfp])
+                else:
+                    if mfp_all[-1][1] == mfp:
+                        mfp_all[-1][0][1] = time_group
+                    else:
+                        mfp_all.append([[time_group, time_group], mfp])
+                print(mfp_all)
+            return mfp_all
 
         start_meta_id = metaId_pass_cross(start_id)
         end_meta_id = metaId_pass_cross(end_id)
-        gen_detail_graph(start_meta_id, end_meta_id)
+        return find_main_path(start_meta_id, end_meta_id)
 
 
 # 测试用
 es = EstTime()
-mr = MainRoad(es.getEstTime(52475, 52464, 'weekday'))
-mr.getMainPath(52475, 52464)
+mr = MainRoad(es.getEstTime(53112, 65156, 'weekday'), show_detail=False)
+mr.getMainPath(53112, 65156)

@@ -14,7 +14,9 @@ class Config(object):
             config['analizeTime'] = {
                 'homepath': '/home/elvis/map/analize/analizeTime/countXEntTime/',
                 'time_interval': 15,
-                'time_factor': 1.3}
+                'time_factor': 1.3,
+                'cross_file': '/home/elvis/map/analize/analizeCross/countXEnt-new.shp',
+                'edge_pass_number': 300}
             with open(self.conf, 'w') as configfile:
                 config.write(configfile)
 

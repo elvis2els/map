@@ -2,11 +2,12 @@ import argparse
 import math
 import os
 import time
+from concurrent import futures
 
-import pandas as pd
-import shapefile
-import pymysql
 import networkx as nx
+import pandas as pd
+import pymysql
+import shapefile
 
 from Config import Config
 
@@ -24,22 +25,20 @@ def readShp(shpfile):
     return pd.DataFrame.from_records(records, columns=['rank', 'cross_index', 'count', 'entropy'], index='rank')[:max_rank]
 
 
-def traj2mainCross(main_cross, database_conf):
-    connection = pymysql.connect(
-        database_conf['host'], database_conf['user'], database_conf['passwd'], database_conf['name'])
+def chunks(l, n):
+    for i in range(0, len(l), n):
+        yield l[i:i + n]
+
+
+def projection(metaIds):
+    print('开始进程, size={}'.format(len(metaIds)))
+    conn = pymysql.connect(database_conf['host'], database_conf[
+                           'user'], database_conf['passwd'], database_conf['name'])
     traj_df = pd.DataFrame(columns=['start_id', 'end_id'])
-    with connection.cursor() as cursor:
-        query_metaId = 'SELECT id FROM traj_metadata'
-        cursor.execute(query_metaId)
-        metaIds = cursor.fetchall()
-        i, maxlen, start_time = 1, len(metaIds), time.time()
+    with conn.cursor() as cursor:
         for metaId in metaIds:
-            if time.time() - start_time > 1:
-                print('{}/{}'.format(i, maxlen), end='\r')
-                start_time = time.time()
-            i += 1
             query_traj = 'SELECT cross_id FROM traj_data WHERE metadata_id={}'.format(
-                metaId[0])
+                metaId)
             cursor.execute(query_traj)
             traj = cursor.fetchall()
             ret_traj = []
@@ -49,16 +48,37 @@ def traj2mainCross(main_cross, database_conf):
             if len(ret_traj) > 1:
                 traj_tmp_df = pd.DataFrame(
                     {'start_id': ret_traj[:-1], 'end_id': ret_traj[1:]})
-            traj_df = pd.concat([traj_df, traj_tmp_df], ignore_index=True)
-
-    print('traj2mainCross finish!')
+                traj_df = pd.concat([traj_df, traj_tmp_df], ignore_index=True)
+    print(traj_df.head())
     return traj_df
 
 
-def gen_graph(traj_df, config):
+def traj2mainCross():
+    traj_all_df = traj_df = pd.DataFrame(columns=['start_id', 'end_id'])
+    with connection.cursor() as cursor:
+        query_metaId = 'SELECT id FROM traj_metadata'
+        cursor.execute(query_metaId)
+        metaIds = cursor.fetchall()
+        metaIds = chunks([x[0] for x in metaIds], 100000)
+
+    with futures.ProcessPoolExecutor() as pool:
+        i = 1
+        for traj_df in pool.map(projection, metaIds):
+            print('完成{}'.format(i))
+            i += 1
+            traj_all_df = pd.concat([traj_all_df, traj_df], ignore_index=True)
+
+    print('traj2mainCross finish!')
+    return traj_all_df
+
+
+def gen_graph(traj_df):
+    print('开始grouped.....')
+    s_t = time.time()
     grouped = traj_df.groupby(['start_id', 'end_id']).apply(len)
     grouped = grouped[grouped >= int(config.getConf(
         'analizeTime')['edge_pass_number'])]
+    print('完成grouped: {}s'.format(time.time() - s_t))
     # grouped = grouped[grouped >= 5]
     G = nx.DiGraph()
     i, maxlen, start_time = 1, len(grouped), time.time()
@@ -76,16 +96,22 @@ def gen_graph(traj_df, config):
             G.add_edge(start_id, end_id, weight=weight)
     return G
 
+config = Config()
+database_conf = config.getConf('database')
+connection = pymysql.connect(database_conf['host'], database_conf[
+                             'user'], database_conf['passwd'], database_conf['name'])
+shpfile = config.getConf('analizeTime')['cross_file']
+shp_df = readShp(shpfile)
+main_cross = set(shp_df['cross_index'])
+
 
 def main():
-    config = Config()
-    shpfile = config.getConf('analizeTime')['cross_file']
-    shp_df = readShp(shpfile)
-    main_cross = set(shp_df['cross_index'])
-    traj_df = traj2mainCross(main_cross, config.getConf('database'))
-    G = gen_graph(traj_df, config)
+    traj_df = traj2mainCross()
+    G = gen_graph(traj_df)
     dirpath = config.getConf('analizeTime')['homepath']
     nx.write_gexf(G, os.path.join(dirpath, 'visual_map.gexf'))
 
 if __name__ == '__main__':
+    start_time = time.time()
     main()
+    print('总用时：{}'.format(time.time() - start_time))

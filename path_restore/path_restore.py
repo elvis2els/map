@@ -3,14 +3,16 @@
 import datetime as dt
 import math
 import os
+import time
 
+import matplotlib.pyplot as plt
 import networkx as nx
 import numpy as np
 import pandas as pd
 import pymysql
-import matplotlib.pyplot as plt
 
 from Config import Config
+from roadmap import Roadmap
 
 
 class EstTime(object):
@@ -118,9 +120,10 @@ class EstTime(object):
 
 
 class MainRoad(object):
-    def __init__(self, estTime_df, show_detail=False):
+    def __init__(self, estTime_df, road_shp, show_detail=False):
         self.config = Config()
         self.estTime_df = estTime_df
+        self.road = Roadmap(road_shp)
         self.show_detail = show_detail
         database_conf = self.config.getConf('database')
         self.connection = pymysql.connect(
@@ -129,6 +132,9 @@ class MainRoad(object):
             database_conf['passwd'],
             database_conf['name']
         )
+        if not self.road.load():
+            print('map shp load error!')
+            exit()
 
     def getGroupTime(self, time_group):
         """获取指定时间分组的预估计时间"""
@@ -219,15 +225,15 @@ class MainRoad(object):
             traj_df = pd.DataFrame(
                 columns=['start_id', 'end_id', 'time_group'])
 
-            i = 1
-            maxlen = len(meta_ids)
-            for meta_id, time in meta_ids:
+            i, maxlen, s_time = 1, len(meta_ids), time.time()
+            for meta_id, traj_time in meta_ids:
                 if self.show_detail:
-                    if i % np.floor(maxlen / 10) == 0:
-                        print("{}/{}".format(i, maxlen))
+                    if time.time() - s_time > 1:
+                        print("{}/{}".format(i, maxlen), end='\r')
+                        s_time = time.time()
                     i += 1
                 traj_df = pd.concat([traj_df, traj_in_time(
-                    meta_id, time, kind)], ignore_index=True)
+                    meta_id, traj_time, kind)], ignore_index=True)
             traj_df.to_csv(filepath, index=False)
             return traj_df
 
@@ -291,6 +297,6 @@ class MainRoad(object):
 
 
 # 测试用
-es = EstTime()
-mr = MainRoad(es.getEstTime(53112, 65156, 'weekday'), show_detail=False)
-mr.getMainPath(53112, 65156)
+# es = EstTime()
+# mr = MainRoad(es.getEstTime(53112, 65156, 'weekday'), show_detail=False)
+# mr.getMainPath(53112, 65156)

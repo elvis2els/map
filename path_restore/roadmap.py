@@ -8,10 +8,9 @@ class Direction(Enum):
     Forward = 2
 
 
-speed_limit = {4: 80, 3: 60, 2: 40}
-
-
 class RoadSegment(object):
+    speed_limit = {4: 80, 3: 60, 2: 40}
+
     def __init__(self):
         self.index = -1
         self.start_cross_index = -1
@@ -27,6 +26,7 @@ class RoadSegment(object):
 
 
 class Roadmap(object):
+
     def __init__(self, mapfile):
         self._mapfile = mapfile
         self._roads = []
@@ -72,10 +72,10 @@ class Roadmap(object):
                 if cross_start_index == road.start_cross_index and cross_end_index == road.end_cross_index:
                     return road_index
         return None
-        
+
     def getRoadSpeedLimit(self, road_index):
         return self._roads[road_index].getSpeedLimit()
 
 
 #a = Roadmap('/home/elvis/map/Beijing2011/bj-road-epsg3785.shp')
-#a.load()
+# a.load()

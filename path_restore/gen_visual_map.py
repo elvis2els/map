@@ -31,7 +31,7 @@ def chunks(l, n):
 
 
 def projection(metaIds):
-    print('开始进程, size={}'.format(len(metaIds)))
+    print('开始进程({}), size={}'.format(os.getpid(), len(metaIds)))
     conn = pymysql.connect(database_conf['host'], database_conf[
                            'user'], database_conf['passwd'], database_conf['name'])
     traj_df = pd.DataFrame(columns=['start_id', 'end_id'])

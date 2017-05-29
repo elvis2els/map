@@ -1,7 +1,7 @@
 import shapefile
 
 from enum import Enum
-
+from scipy.spatial import distance
 
 class Direction(Enum):
     Bidirection = 0
@@ -76,6 +76,10 @@ class Roadmap(object):
     def getRoadSpeedLimit(self, road_index):
         return self._roads[road_index].getSpeedLimit()
 
+    def distance_cross(self, cross1_index, cross2_index):
+        return distance.euclidean(self.getCross(cross1_index), self.getCross(cross2_index))
 
-#a = Roadmap('/home/elvis/map/Beijing2011/bj-road-epsg3785.shp')
+
+# a = Roadmap('/home/elvis/map/Beijing2011/bj-road-epsg3785.shp')
+# a = Roadmap('/Users/heyulong/Downloads/Beijing2011/bj-road-epsg3785.shp')
 # a.load()

@@ -151,7 +151,7 @@ class MainRoad(object):
                 traj_ids = cursor.fetchall()
             return traj_ids
 
-        def traj_in_time(meta_id, time, kind):
+        def traj_in_time(meta_id, time, kind, space_limit):
             """获取指定轨迹id在有效时间区间内的轨迹"""
             if not kind in ['start', 'end']:
                 print('filter_traj参数错误')
@@ -172,6 +172,9 @@ class MainRoad(object):
                 cursor.execute(query)
                 traj = cursor.fetchall()
             cross_id = [c_id for c_id, time in traj]
+            for index in cross_id:
+                if not space_limit.isInSpace(self.road.getCross(index)):
+                    return pd.DataFrame(columns=['start_id', 'end_id', 'time_group'])
             return pd.DataFrame({'start_id': cross_id[:-1], 'end_id': cross_id[1:], 'time_group': time_group})
 
         def drawGraph(G):
@@ -225,6 +228,7 @@ class MainRoad(object):
             traj_df = pd.DataFrame(
                 columns=['start_id', 'end_id', 'time_group'])
 
+            spaceLimit = SpaceLimit(self.road, start_id, end_id)
             i, maxlen, s_time = 1, len(meta_ids), time.time()
             for meta_id, traj_time in meta_ids:
                 if self.show_detail:
@@ -233,7 +237,7 @@ class MainRoad(object):
                         s_time = time.time()
                     i += 1
                 traj_df = pd.concat([traj_df, traj_in_time(
-                    meta_id, traj_time, kind)], ignore_index=True)
+                    meta_id, traj_time, kind, spaceLimit)], ignore_index=True)
             traj_df.to_csv(filepath, index=False)
             return traj_df
 
@@ -290,11 +294,27 @@ class MainRoad(object):
                         mfp_all.append([[time_group, time_group], mfp])
                 print(mfp_all)
             return mfp_all
+        
+        
 
         start_meta_id = metaId_pass_cross(start_id)
         end_meta_id = metaId_pass_cross(end_id)
         return find_main_path(start_meta_id, end_meta_id)
 
+class SpaceLimit(object):
+    def __init__(self, road, start_index, end_index):
+        roadlenth = road.distance_cross(start_index, end_index)
+        coord_s = road.getCross(start_index)
+        coord_e = road.getCross(end_index)
+        if coord_s[0] > coord_e[0]:
+            coord_s, coord_e = coord_e, coord_s
+        self.left, self.right = coord_s[0] - roadlenth, coord_e[0] + roadlenth
+        if coord_s[1] > coord_e[1]:
+            coord_s, coord_e = coord_e, coord_s
+        self.top, self.down = coord_s[1] - roadlenth, coord_e[1] + roadlenth
+
+    def isInSpace(self, coord):
+        return coord[0] >= self.left and coord[0] <=self.right and coord[1] >= self.down and coord[1] <= self.top
 
 # 测试用
 # es = EstTime()

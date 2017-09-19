@@ -52,7 +52,7 @@ class EstTime(object):
             merge_df['counts'] = merge_df.groupby(
                 ['meta_id'])['meta_id'].transform(len)
             merge_df = merge_df[merge_df.counts == 1 &
-                                (merge_df.time_x < merge_df.time_y)]
+                                    (merge_df.time_x < merge_df.time_y)]
             merge_df = merge_df.drop('counts', axis=1)
             merge_df['duration'] = (
                 merge_df.time_y - merge_df.time_x) / np.timedelta64(1, 's')
@@ -99,6 +99,32 @@ class EstTime(object):
             grouped_weekend = df_weekend['duration'].groupby(df['time_group'])
             grouped_weekend.mean().to_csv(os.path.join(dirpath, 'weekend-time.csv'))
 
+        def valueList(df, metaid, weekday):
+            values = []
+            for time_group, duration in df.iteritems():
+                values.append((str(metaid), '%.5f' %
+                               duration, str(weekday), str(time_group)))
+            return values
+
+        def to_mysql(df, start_id, end_id):
+            df_weekday = df[df['weekday'] < 6]
+            df_weekend = df[df['weekday'] >= 6]
+            grouped_weekday = df_weekday[
+                'duration'].groupby(df['time_group']).mean()
+            grouped_weekend = df_weekend[
+                'duration'].groupby(df['time_group']).mean()
+            with self.connection.cursor() as cursor:
+                getId_query = 'SELECT id FROM visual_edge WHERE start_cross_id={} and end_cross_id={}'.format(
+                    start_id, end_id)
+                cursor.execute(getId_query)
+                metaId = cursor.fetchone()[0]
+                insert_query = 'INSERT INTO cross_pre_time (edge_meta_id, duration, weekday, time_group) VALUES (%s, %s, %s, %s);'
+                values = valueList(grouped_weekday, metaId, 1)
+                cursor.executemany(insert_query, values)
+                values = valueList(grouped_weekend, metaId, 0)
+                cursor.executemany(insert_query, values)
+            self.connection.commit()
+
         filebase = '{}to{}'.format(start_id, end_id)
         dirpath = os.path.join(self.config.getConf(
             'analizeTime')['homepath'], filebase)
@@ -106,24 +132,35 @@ class EstTime(object):
         if not os.path.exists(filepath):
             merge_df = merged_trajId(start_id, end_id)
             filter_df = filter_outliers(merge_df)
-            to_csv(filter_df, start_id, end_id)
+            # to_csv(filter_df, start_id, end_id)
+            to_mysql(filter_df, start_id, end_id)
 
-    def getEstTime(self, start_id, end_id, weekday):
+    def getEstTime(self, start_id, end_id, weekday=True):
         """获取两点间通行时间"""
-        filebase = '{}to{}'.format(start_id, end_id)
-        dirpath = os.path.join(self.config.getConf(
-            'analizeTime')['homepath'], filebase)
-        filepath = os.path.join(dirpath, '{}-time.csv'.format(weekday))
-        if not os.path.exists(filepath):
-            self.est_cross_time(start_id, end_id)
-        return pd.read_csv(filepath, names=['time_group', 'duration'], index_col=['time_group'])
+        with self.connection.cursor() as cursor:
+            query = 'SELECT id FROM visual_edge WHERE start_cross_id={} AND end_cross_id={}'.format(
+                start_id, end_id)
+            cursor.execute(query)
+            metaid = cursor.fetchone()
+            if len(metaid) == 0:
+                return pd.DataFrame(columns=['time_group', 'duration'])
+            metaid = metaid[0]
+
+        if weekday:
+            weekday = 1
+        else:
+            weekday = 0
+        query = 'SELECT time_group, duration FROM cross_pre_time WHERE edge_meta_id={} AND weekday={}'.format(
+                metaid, weekday)
+        return pd.read_sql_query(query, self.connection, index_col=['time_group'])
 
 
 class MainRoad(object):
-    def __init__(self, estTime_df, road_shp, show_detail=False):
+
+    def __init__(self, road, show_detail=False):
         self.config = Config()
-        self.estTime_df = estTime_df
-        self.road = Roadmap(road_shp)
+        self.estTime = EstTime()
+        self.road = road
         self.show_detail = show_detail
         database_conf = self.config.getConf('database')
         self.connection = pymysql.connect(
@@ -132,15 +169,12 @@ class MainRoad(object):
             database_conf['passwd'],
             database_conf['name']
         )
-        if not self.road.load():
-            print('map shp load error!')
-            exit()
+        # if not self.road.load():
+        #     print('map shp load error!')
+        #     exit()
+        # print('map load done!')
 
-    def getGroupTime(self, time_group):
-        """获取指定时间分组的预估计时间"""
-        return self.estTime_df.loc[time_group, 'duration']
-
-    def getMainPath(self, start_id, end_id):
+    def getMainPath(self, start_id, end_id, weekday=True):
         """得到两点间主路段"""
         def metaId_pass_cross(cross_id):
             """获取通过指定路口的轨迹id和时间"""
@@ -151,27 +185,49 @@ class MainRoad(object):
                 traj_ids = cursor.fetchall()
             return traj_ids
 
+        def getGroupTime(time_group):
+            """获取指定时间分组的预估计时间"""
+            try:
+                groupTime = estTime_df.loc[time_group, 'duration']
+            except KeyError as e:   #有可能time_group不在ESTTime_df的time_group里
+                return 0
+            return groupTime
+
         def traj_in_time(meta_id, time, kind, space_limit):
             """获取指定轨迹id在有效时间区间内的轨迹"""
             if not kind in ['start', 'end']:
                 print('filter_traj参数错误')
                 exit()
+
             time_group = math.ceil((time.hour * 60 + time.minute) /
                                    int(self.config.getConf('analizeTime')['time_interval']))
-            est_time = dt.timedelta(seconds=self.getGroupTime(
+            est_time = dt.timedelta(seconds=getGroupTime(
                 time_group) * float(self.config.getConf('analizeTime')['time_factor']))
+            if est_time == 0:
+                return pd.DataFrame(columns=['start_id', 'end_id', 'time_group'])
+
             max_time = 0
             if kind == 'start':
                 max_time = time + est_time
             if kind == 'end':
                 time, max_time = time - est_time, time
 
-            query = "SELECT cross_id, time FROM traj_data WHERE metadata_id={} and time>=\"{}\" and time<=\"{}\"".format(
+            query = "SELECT cross_id FROM traj_data WHERE metadata_id={} and time>=\"{}\" and time<=\"{}\"".format(
                 meta_id, time, max_time)
             with self.connection.cursor() as cursor:
                 cursor.execute(query)
                 traj = cursor.fetchall()
-            cross_id = [c_id for c_id, time in traj]
+            cross_id = [c_id[0] for c_id in traj]
+            # if kind == 'end':
+            #     cross_id = cross_id[::-1]      #统一成start来处理
+            # valid_cross = []
+            # for index in cross_id:       #需要裁取空间区域内的部分
+            #     if not space_limit.isInSpace(self.road.getCross(index)):
+            #         break
+            #     valid_cross.append(index)
+            # print(valid_cross);exit()
+            # if kind == 'end':
+            #     valid_cross = valid_cross[::-1]
             for index in cross_id:
                 if not space_limit.isInSpace(self.road.getCross(index)):
                     return pd.DataFrame(columns=['start_id', 'end_id', 'time_group'])
@@ -190,10 +246,6 @@ class MainRoad(object):
             i = 1
             maxlen = len(df)
             for cross, weight in df.iteritems():
-                if self.show_detail:
-                    if i % np.floor(maxlen / 10) == 0:
-                        print("{}/{}".format(i, maxlen))
-                    i += 1
                 if cross[0] == cross[1]:
                     continue
                 edge = (cross[0], cross[1])
@@ -204,11 +256,13 @@ class MainRoad(object):
 
         def gen_graph(traj_start_df, traj_end_df, time_group):
             """根据指定的时间分组生成图"""
-            trajs_group_df = traj_start_df[traj_start_df['time_group'] == time_group]
+            trajs_group_df = traj_start_df[
+                traj_start_df['time_group'] == time_group]
             gbs = trajs_group_df.groupby(['start_id', 'end_id']).apply(len)
             G = nx.DiGraph()
             add_graph(G, gbs)
-            traje_group_df = traj_end_df[traj_end_df['time_group'] == time_group]
+            traje_group_df = traj_end_df[
+                traj_end_df['time_group'] == time_group]
             gbe = traje_group_df.groupby(['start_id', 'end_id']).apply(len)
             add_graph(G, gbe)
             return G
@@ -218,13 +272,6 @@ class MainRoad(object):
             if not kind in ['start', 'end']:
                 print('filter_traj参数错误')
                 exit()
-            filebase = '{}to{}'.format(start_id, end_id)
-            dirpath = os.path.join(self.config.getConf(
-                'analizeTime')['homepath'], filebase)
-            filepath = os.path.join(dirpath, 'traj-{}.csv'.format(kind))
-            if os.path.exists(filepath):
-                traj_df = pd.read_csv(filepath)
-                return traj_df
             traj_df = pd.DataFrame(
                 columns=['start_id', 'end_id', 'time_group'])
 
@@ -238,7 +285,6 @@ class MainRoad(object):
                     i += 1
                 traj_df = pd.concat([traj_df, traj_in_time(
                     meta_id, traj_time, kind, spaceLimit)], ignore_index=True)
-            traj_df.to_csv(filepath, index=False)
             return traj_df
 
         def getPathWeight(G, path):
@@ -259,9 +305,9 @@ class MainRoad(object):
                     if mfp_w < mfp_w_tmp:
                         mfp = path
                         mfp_w = mfp_w_tmp
-            print("path数量：{}".format(i))
+            mfp = [int(m) for m in mfp]
             return mfp
-        
+
         def filter_graph(G):
             from_s = nx.descendants(G, start_id)
             from_s.add(start_id)
@@ -274,36 +320,42 @@ class MainRoad(object):
             """分别生成s出发和e到达的图，合并有效部分,根据合成的部分得到主路径"""
             traj_start_df = get_traj(start_meta_id, 'start')
             traj_end_df = get_traj(end_meta_id, 'end')
-            first_timegroup, last_timegroup = self.estTime_df.first_valid_index(
-            ), self.estTime_df.last_valid_index()
+            time_groups = estTime_df.index.tolist()
             mfp_all = []
-            for time_group in range(first_timegroup, last_timegroup + 1):
+            for time_group in time_groups:
+                # print(time_group)
                 G = gen_graph(traj_start_df, traj_end_df, time_group)
-                drawGraph(G)
-                print('node:{}, edge:{}'.format(G.number_of_nodes(), G.number_of_edges()))
+                if len(G) == 0 or not G.has_node(start_id) or not G.has_node(end_id):    #可能出现某一时段没有车辆通过这两个路口且无法拼接
+                    continue
+                # if time_group == 74:
+                #     drawGraph(G)
                 filter_graph(G)
-                drawGraph(G)
-                print('node:{}, edge:{}'.format(G.number_of_nodes(), G.number_of_edges()))
+                # if time_group == 74:
+                #     drawGraph(G)
+                # G = nx.DiGraph()
+                # print('time_group:{} node:{} edge:{}'.format(time_group, G.number_of_nodes(), G.size()))
+                if len(G) == 0:    #可能出现某一时段过滤后没有车辆通过这两个路口且无法拼接
+                    continue
                 mfp = MFP(G)
                 if not mfp_all:
                     mfp_all.append([[time_group, time_group], mfp])
                 else:
-                    if mfp_all[-1][1] == mfp:
+                    if mfp_all[-1][0][1] + 1 == time_group and mfp_all[-1][1] == mfp:
                         mfp_all[-1][0][1] = time_group
                     else:
                         mfp_all.append([[time_group, time_group], mfp])
-                print(mfp_all)
             return mfp_all
-        
-        
 
+        estTime_df = self.estTime.getEstTime(start_id, end_id, weekday=weekday)
         start_meta_id = metaId_pass_cross(start_id)
         end_meta_id = metaId_pass_cross(end_id)
         return find_main_path(start_meta_id, end_meta_id)
 
+
 class SpaceLimit(object):
-    def __init__(self, road, start_index, end_index):
-        roadlenth = road.distance_cross(start_index, end_index)
+
+    def __init__(self, road, start_index, end_index):       
+        roadlenth = road.distance_cross(start_index, end_index) * 0.75
         coord_s = road.getCross(start_index)
         coord_e = road.getCross(end_index)
         if coord_s[0] > coord_e[0]:
@@ -311,12 +363,14 @@ class SpaceLimit(object):
         self.left, self.right = coord_s[0] - roadlenth, coord_e[0] + roadlenth
         if coord_s[1] > coord_e[1]:
             coord_s, coord_e = coord_e, coord_s
-        self.top, self.down = coord_s[1] - roadlenth, coord_e[1] + roadlenth
+        self.down, self.top = coord_s[1] - roadlenth, coord_e[1] + roadlenth
 
     def isInSpace(self, coord):
-        return coord[0] >= self.left and coord[0] <=self.right and coord[1] >= self.down and coord[1] <= self.top
+        return coord[0] >= self.left and coord[0] <= self.right and coord[1] >= self.down and coord[1] <= self.top
 
 # 测试用
 # es = EstTime()
-# mr = MainRoad(es.getEstTime(53112, 65156, 'weekday'), show_detail=False)
-# mr.getMainPath(53112, 65156)
+# es.getEstTime(53112, 65156, weekday=True)
+# mr = MainRoad(
+#     '/home/elvis/map/map-shp/Beijing2011/bj-road-epsg3785.shp', show_detail=True)
+# print(mr.getMainPath(53112, 65156, weekday=True))

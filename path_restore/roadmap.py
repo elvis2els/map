@@ -24,6 +24,9 @@ class RoadSegment(object):
             return 0
         return speed_limit[self.road_class] / 3.6
 
+    def __str__(self):
+        return '{} {}'.format(self.start_cross_index, self.end_cross_index)
+
 
 class Roadmap(object):
 
@@ -40,7 +43,7 @@ class Roadmap(object):
         except:
             return False
         roads_records = sf.shapeRecords()  # 获取路段信息'
-        cross_set = set()
+        cross_map = {}
         for road_record in roads_records:
             road = RoadSegment()
             road.index = len(self._roads)
@@ -49,14 +52,17 @@ class Roadmap(object):
             road.road_class = road_record.record[self.PATHCLASS_index]
             cross_s = road_record.shape.points[0]
             cross_e = road_record.shape.points[-1]
-            if not cross_s in cross_set:
-                road.start_cross_index = len(self._cross)
+            if not cross_s in cross_map:
+                cross_map[cross_s] = road.start_cross_index = len(self._cross)
                 self._cross.append(cross_s)
-                cross_set.add(cross_s)
-            if not cross_e in cross_set:
-                road.end_cross_index = len(self._cross)
+            else:
+                road.start_cross_index = cross_map[cross_s]
+            if not cross_e in cross_map:
+                cross_map[cross_e] = road.end_cross_index = len(self._cross)
                 self._cross.append(cross_e)
-                cross_set.add(cross_e)
+            else:
+                road.end_cross_index = cross_map[cross_e]
+            self._roads.append(road)
         return True
 
     def getCross(self, index):
@@ -64,13 +70,13 @@ class Roadmap(object):
 
     def getRoadByCross(self, cross_start_index, cross_end_index):
         for road_index, road in enumerate(self._roads):
-            if int(road.record[self.DIRECTION_index]) == Direction['Bidirection'].value:
+            if int(road.direction) == Direction['Bidirection'].value:
                 ends_cross = [road.start_cross_index, road.end_cross_index]
                 if cross_start_index in ends_cross and cross_end_index in ends_cross:
-                    return road_index
+                    return road
             else:
                 if cross_start_index == road.start_cross_index and cross_end_index == road.end_cross_index:
-                    return road_index
+                    return road
         return None
 
     def getRoadSpeedLimit(self, road_index):

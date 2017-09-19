@@ -11,7 +11,7 @@ import shapefile
 
 from Config import Config
 
-parser = argparse.ArgumentParser(description="查找两地标间主路段，并计算通行时间")
+parser = argparse.ArgumentParser(description="查找两地标间主路段，并计算通行时间，使用前需先清空表visual_edge")
 parser.add_argument('filter', help='仅保留前x个地标')
 args = parser.parse_args()
 
@@ -56,6 +56,7 @@ def projection(metaIds):
 def traj2mainCross():
     traj_all_df = traj_df = pd.DataFrame(columns=['start_id', 'end_id'])
     with connection.cursor() as cursor:
+        print('find all id ...')
         query_metaId = 'SELECT id FROM traj_metadata'
         cursor.execute(query_metaId)
         metaIds = cursor.fetchall()
@@ -96,6 +97,15 @@ def gen_graph(traj_df):
             G.add_edge(start_id, end_id, weight=weight)
     return G
 
+def edge_to_mysql(G):
+    with connection.cursor() as cursor:
+        insert_query = 'INSERT INTO visual_edge (start_cross_id, end_cross_id, weight) values(%s, %s, %s);'
+        values = []
+        for edge in G.edges_iter(data='weight'):
+            values.append((int(edge[0][:-2]), int(edge[1][:-2]), int(edge[2])))
+        cursor.executemany(insert_query, values)
+    connection.commit()
+
 config = Config()
 database_conf = config.getConf('database')
 connection = pymysql.connect(database_conf['host'], database_conf[
@@ -109,7 +119,8 @@ def main():
     traj_df = traj2mainCross()
     G = gen_graph(traj_df)
     dirpath = config.getConf('analizeTime')['homepath']
-    nx.write_gexf(G, os.path.join(dirpath, 'visual_map.gexf'))
+    nx.write_gexf(G, os.path.join(dirpath, 'visualMapTop{}.gexf'.format(args.filter)))
+    edge_to_mysql(G)
 
 if __name__ == '__main__':
     start_time = time.time()

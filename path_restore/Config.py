@@ -16,7 +16,8 @@ class Config(object):
                 'time_interval': 15,
                 'time_factor': 1.3,
                 'cross_file': '/home/elvis/map/analize/analizeCross/countXEnt-new.shp',
-                'edge_pass_number': 300}
+                'edge_pass_number': 300,
+                'map_file': '/home/elvis/map/map-shp/Beijing2011/bj-road-epsg3785.shp'}
             with open(self.conf, 'w') as configfile:
                 config.write(configfile)
 

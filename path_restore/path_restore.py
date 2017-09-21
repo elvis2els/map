@@ -362,7 +362,7 @@ class SpaceLimit(object):
         self.down, self.top = coord_s[1] - roadlenth, coord_e[1] + roadlenth
 
     def isInSpace(self, coord):
-        return coord[0] >= self.left and coord[0] <= self.right and coord[1] >= self.down and coord[1] <= self.top
+        return self.left <= coord[0] <= self.right and self.down <= coord[1] <= self.top
 
 # 测试用
 # es = EstTime()

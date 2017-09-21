@@ -13,6 +13,7 @@ import pymysql
 
 from Config import Config
 from roadmap import Roadmap
+from path_restore.graph import MapGraph
 
 
 class EstTime(object):
@@ -30,6 +31,7 @@ class EstTime(object):
 
     def est_cross_time(self, start_id, end_id):
         """估计两点通行时间"""
+
         def traj_pass_cross(cross_id):
             """获取通过该cross的轨迹id"""
             query = "SELECT metadata_id, time FROM traj_data WHERE cross_id={}".format(
@@ -52,10 +54,10 @@ class EstTime(object):
             merge_df['counts'] = merge_df.groupby(
                 ['meta_id'])['meta_id'].transform(len)
             merge_df = merge_df[merge_df.counts == 1 &
-                                    (merge_df.time_x < merge_df.time_y)]
+                                (merge_df.time_x < merge_df.time_y)]
             merge_df = merge_df.drop('counts', axis=1)
             merge_df['duration'] = (
-                merge_df.time_y - merge_df.time_x) / np.timedelta64(1, 's')
+                                       merge_df.time_y - merge_df.time_x) / np.timedelta64(1, 's')
             merge_df['time_group'] = ((merge_df['time_x'].dt.hour * 60 + merge_df['time_x'].dt.minute) /
                                       int(self.config.getConf('analizeTime')['time_interval'])).apply(math.ceil)
             return merge_df
@@ -151,12 +153,11 @@ class EstTime(object):
         else:
             weekday = 0
         query = 'SELECT time_group, duration FROM cross_pre_time WHERE edge_meta_id={} AND weekday={}'.format(
-                metaid, weekday)
+            metaid, weekday)
         return pd.read_sql_query(query, self.connection, index_col=['time_group'])
 
 
 class MainRoad(object):
-
     def __init__(self, road, show_detail=False):
         self.config = Config()
         self.estTime = EstTime()
@@ -176,6 +177,7 @@ class MainRoad(object):
 
     def getMainPath(self, start_id, end_id, weekday=True):
         """得到两点间主路段"""
+
         def metaId_pass_cross(cross_id):
             """获取通过指定路口的轨迹id和时间"""
             query = "SELECT metadata_id, time FROM traj_data WHERE cross_id={}".format(
@@ -189,7 +191,7 @@ class MainRoad(object):
             """获取指定时间分组的预估计时间"""
             try:
                 groupTime = estTime_df.loc[time_group, 'duration']
-            except KeyError as e:   #有可能time_group不在ESTTime_df的time_group里
+            except KeyError as e:  # 有可能time_group不在ESTTime_df的time_group里
                 return 0
             return groupTime
 
@@ -242,9 +244,6 @@ class MainRoad(object):
             plt.show()
 
         def add_graph(G, df):
-            df_filter = df[df > 1]
-            i = 1
-            maxlen = len(df)
             for cross, weight in df.iteritems():
                 if cross[0] == cross[1]:
                     continue
@@ -256,16 +255,12 @@ class MainRoad(object):
 
         def gen_graph(traj_start_df, traj_end_df, time_group):
             """根据指定的时间分组生成图"""
-            trajs_group_df = traj_start_df[
-                traj_start_df['time_group'] == time_group]
-            gbs = trajs_group_df.groupby(['start_id', 'end_id']).apply(len)
-            G = nx.DiGraph()
-            add_graph(G, gbs)
-            traje_group_df = traj_end_df[
-                traj_end_df['time_group'] == time_group]
-            gbe = traje_group_df.groupby(['start_id', 'end_id']).apply(len)
-            add_graph(G, gbe)
-            return G
+            graph = nx.DiGraph()
+            for traj_df in [traj_start_df, traj_end_df]:
+                traj_group_df = traj_df[traj_df['time_group'] == time_group]
+                gb = traj_group_df.groupby(['start_id', 'end_id']).apply(len)
+                add_graph(graph, gb)
+            return graph
 
         def get_traj(meta_ids, kind):
             """根据指定轨迹id集得到符合合理时间区间的轨迹集合"""
@@ -287,17 +282,18 @@ class MainRoad(object):
                     meta_id, traj_time, kind, spaceLimit)], ignore_index=True)
             return traj_df
 
-        def getPathWeight(G, path):
+        def getPathWeight(graph, path):
             """获取path中路径权值并排序"""
-            return sorted([G[s][e]['weight'] for s, e in zip(path[:-1], path[1:])])
+            return sorted([graph.g.edge_properties["weight"][graph.g.edge(s, e)] for s, e in zip(path[:-1], path[1:])])
 
-        def MFP(G):
+        def MFP(graph):
             """使用MFP查找主路径"""
             mfp = mfp_w = []
             i = 0
-            for path in nx.all_simple_paths(G, start_id, end_id):
+            graph = MapGraph.networkx_to_graph_tool(graph)
+            for path in graph.all_paths(start_id, end_id):
                 i += 1
-                mfp_w_tmp = getPathWeight(G, path)
+                mfp_w_tmp = getPathWeight(graph, path)
                 if not mfp:
                     mfp = path
                     mfp_w = mfp_w_tmp
@@ -308,13 +304,13 @@ class MainRoad(object):
             mfp = [int(m) for m in mfp]
             return mfp
 
-        def filter_graph(G):
-            from_s = nx.descendants(G, start_id)
+        def filter_graph(graph):
+            from_s = nx.descendants(graph, start_id)
             from_s.add(start_id)
-            to_e = nx.ancestors(G, end_id)
+            to_e = nx.ancestors(graph, end_id)
             to_e.add(end_id)
             del_cross = (from_s | to_e) - (from_s & to_e)
-            G.remove_nodes_from(del_cross)
+            graph.remove_nodes_from(del_cross)
 
         def find_main_path(start_meta_id, end_meta_id):
             """分别生成s出发和e到达的图，合并有效部分,根据合成的部分得到主路径"""
@@ -324,19 +320,20 @@ class MainRoad(object):
             mfp_all = []
             for time_group in time_groups:
                 # print(time_group)
-                G = gen_graph(traj_start_df, traj_end_df, time_group)
-                if len(G) == 0 or not G.has_node(start_id) or not G.has_node(end_id):    #可能出现某一时段没有车辆通过这两个路口且无法拼接
+                graph = gen_graph(traj_start_df, traj_end_df, time_group)
+                if len(graph) == 0 or not graph.has_node(start_id) or not graph.has_node(
+                        end_id):  # 可能出现某一时段没有车辆通过这两个路口且无法拼接
                     continue
                 # if time_group == 74:
                 #     drawGraph(G)
-                filter_graph(G)
+                filter_graph(graph)
                 # if time_group == 74:
                 #     drawGraph(G)
                 # G = nx.DiGraph()
                 # print('time_group:{} node:{} edge:{}'.format(time_group, G.number_of_nodes(), G.size()))
-                if len(G) == 0:    #可能出现某一时段过滤后没有车辆通过这两个路口且无法拼接
+                if len(graph) == 0:  # 可能出现某一时段过滤后没有车辆通过这两个路口且无法拼接
                     continue
-                mfp = MFP(G)
+                mfp = MFP(graph)
                 if not mfp_all:
                     mfp_all.append([[time_group, time_group], mfp])
                 else:
@@ -353,8 +350,7 @@ class MainRoad(object):
 
 
 class SpaceLimit(object):
-
-    def __init__(self, road, start_index, end_index):       
+    def __init__(self, road, start_index, end_index):
         roadlenth = road.distance_cross(start_index, end_index) * 0.75
         coord_s = road.getCross(start_index)
         coord_e = road.getCross(end_index)

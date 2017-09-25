@@ -13,7 +13,7 @@ import pymysql
 
 from Config import Config
 from roadmap import Roadmap
-from path_restore.graph import MapGraph
+from graph import MapGraph
 
 
 class EstTime(object):
@@ -292,6 +292,7 @@ class MainRoad(object):
             i = 0
             graph = MapGraph.networkx_to_graph_tool(graph)
             for path in graph.all_paths(start_id, end_id):
+                path = list(path)
                 i += 1
                 mfp_w_tmp = getPathWeight(graph, path)
                 if not mfp:

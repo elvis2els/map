@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 # -*- coding: UTF-8 -*-
 from graph_tool import Graph
-from graph_tool.topology import all_paths
+from graph_tool.topology import all_paths, shortest_distance
 
 
 class MapGraph(object):
@@ -38,7 +38,7 @@ class MapGraph(object):
             return self.dvertex_index.get(label)
         v = self.g.add_vertex()
         self.vertex_label[v] = label
-        self.dvertex_index[label]=v
+        self.dvertex_index[label] = v
         return v
 
     def add_edge_weight(self, s_label, e_label, weight):
@@ -51,7 +51,7 @@ class MapGraph(object):
     @classmethod
     def networkx_to_graph_tool(cls, nx_g):
         gt_g = MapGraph()
-        for e in nx_g.edges:
+        for e in nx_g.edges():
             gt_g.add_edge_weight(e[0], e[1], nx_g[e[0]][e[1]]["weight"])
         return gt_g
 
@@ -59,7 +59,6 @@ class MapGraph(object):
         if self.has_vertex(s_label) and self.has_vertex(e_label):
             s_vertex = self.dvertex_index.get(s_label)
             e_vertex = self.dvertex_index.get(e_label)
-            for path in all_paths(self.g, s_vertex, e_vertex):
+            for path in all_paths(self.g, s_vertex, e_vertex,
+                                  cutoff=shortest_distance(self.g, s_vertex, e_vertex) * 3):
                 yield path
-
-

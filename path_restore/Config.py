@@ -7,7 +7,7 @@ class Config(object):
         self.conf = conf_name
         if not os.path.exists(self.conf):
             config = configparser.ConfigParser()
-            config['database'] = {'host': 'localhost',
+            config['database'] = {'host': '192.168.3.122',
                                   'user': 'root',
                                   'passwd': '369212',
                                   'name': 'path_restore'}

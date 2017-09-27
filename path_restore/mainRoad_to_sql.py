@@ -87,4 +87,5 @@ def main():
 if __name__ == '__main__':
     time_s = time.time()
     main()
+    # getMainRoad(get_visual_edge()[1406])
     print('using time: {}'.format(time.time() - time_s))

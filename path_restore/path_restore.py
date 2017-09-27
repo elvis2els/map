@@ -286,6 +286,9 @@ class MainRoad(object):
             """获取path中路径权值并排序"""
             return sorted([graph.g.edge_properties["weight"][graph.g.edge(s, e)] for s, e in zip(path[:-1], path[1:])])
 
+        def path_to_label(graph, path):
+            return [int(float(graph.g.vp.label[node])) for node in path]
+
         def MFP(graph):
             """使用MFP查找主路径"""
             mfp = mfp_w = []
@@ -295,6 +298,7 @@ class MainRoad(object):
                 path = list(path)
                 i += 1
                 mfp_w_tmp = getPathWeight(graph, path)
+                path = path_to_label(graph, path)
                 if not mfp:
                     mfp = path
                     mfp_w = mfp_w_tmp

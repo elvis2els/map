@@ -30,7 +30,7 @@ def get_visual_edge():
 
 
 def getMainRoad(edge):
-    print(u'开始进程: {}'.format(os.getpid()))
+    print('start process: {}'.format(os.getpid()))
     mainRoad = MainRoad(road)
     meta_id, start_id, end_id = edge
     mainPath_weekday = mainRoad.getMainPath(start_id, end_id)
@@ -75,7 +75,7 @@ def main():
             i += 1
             toSql(query, values)
             values = []
-            print(u'{}/{}, 使用时间: {}'.format(i, maxlen, timedelta(seconds=time.time() - time_s)))
+            print(u'{}/{}, using time: {}'.format(i, maxlen, timedelta(seconds=time.time() - time_s)))
     # for meta_id, mfp_weekday, mfp_weekend in map(getMainRoad, edges):
     #     values.extend(toValues(mfp_weekday, meta_id))
     #     values.extend(toValues(mfp_weekend, meta_id, weekday=False))

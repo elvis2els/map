@@ -60,5 +60,5 @@ class MapGraph(object):
             s_vertex = self.dvertex_index.get(s_label)
             e_vertex = self.dvertex_index.get(e_label)
             for path in all_paths(self.g, s_vertex, e_vertex,
-                                  cutoff=shortest_distance(self.g, s_vertex, e_vertex) * 3):
+                                  cutoff=shortest_distance(self.g, s_vertex, e_vertex) * 1.5):
                 yield path

@@ -34,7 +34,9 @@ def getMainRoad(edge):
     mainRoad = MainRoad(road)
     meta_id, start_id, end_id = edge
     mainPath_weekday = mainRoad.getMainPath(start_id, end_id)
+    print('process {} weedday done!'.format(os.getpgid()))
     mainPath_weekend = mainRoad.getMainPath(start_id, end_id, weekday=False)
+    print('process {} weedend done!'.format(os.getpgid()))
     return (meta_id, mainPath_weekday, mainPath_weekend)
 
 
@@ -73,7 +75,9 @@ def main():
             values.extend(toValues(mfp_weekday, meta_id))
             values.extend(toValues(mfp_weekend, meta_id, weekday=False))
             i += 1
+            print('toSql')
             toSql(query, values)
+            print('toSql done')
             values = []
             print(u'{}/{}, using time: {}'.format(i, maxlen, timedelta(seconds=time.time() - time_s)))
     # for meta_id, mfp_weekday, mfp_weekend in map(getMainRoad, edges):

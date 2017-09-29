@@ -33,11 +33,11 @@ def getMainRoad(edge):
     print('start process: {}'.format(os.getpid()))
     mainRoad = MainRoad(road)
     meta_id, start_id, end_id = edge
-    print('process {} weedday begin!'.format(os.getpgid()))
+    print('process {0} weedday begin!'.format(os.getpgid()))
     mainPath_weekday = mainRoad.getMainPath(start_id, end_id)
-    print('process {} weedday done!'.format(os.getpgid()))
+    print('process {0} weedday done!'.format(os.getpgid()))
     mainPath_weekend = mainRoad.getMainPath(start_id, end_id, weekday=False)
-    print('process {} weedend done!'.format(os.getpgid()))
+    print('process {0} weedend done!'.format(os.getpgid()))
     return (meta_id, mainPath_weekday, mainPath_weekend)
 
 

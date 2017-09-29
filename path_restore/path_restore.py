@@ -39,6 +39,7 @@ class EstTime(object):
             with self.connection.cursor() as cursor:
                 cursor.execute(query)
                 traj_ids = cursor.fetchall()
+                cursor.close()
             return traj_ids
 
         def merged_trajId(start_id, end_id):
@@ -165,10 +166,11 @@ class MainRoad(object):
         self.show_detail = show_detail
         database_conf = self.config.getConf('database')
         self.connection = pymysql.connect(
-            database_conf['host'],
-            database_conf['user'],
-            database_conf['passwd'],
-            database_conf['name']
+            host=database_conf['host'],
+            port=3306,
+            user=database_conf['user'],
+            passwd=database_conf['passwd'],
+            db=database_conf['name']
         )
         # if not self.road.load():
         #     print('map shp load error!')
@@ -185,6 +187,7 @@ class MainRoad(object):
             with self.connection.cursor() as cursor:
                 cursor.execute(query)
                 traj_ids = cursor.fetchall()
+                cursor.close()
             return traj_ids
 
         def getGroupTime(time_group):
@@ -219,6 +222,7 @@ class MainRoad(object):
             with self.connection.cursor() as cursor:
                 cursor.execute(query)
                 traj = cursor.fetchall()
+                cursor.close()
             cross_id = [c_id[0] for c_id in traj]
             # if kind == 'end':
             #     cross_id = cross_id[::-1]      #统一成start来处理

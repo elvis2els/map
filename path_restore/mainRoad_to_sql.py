@@ -30,7 +30,7 @@ def get_visual_edge():
 
 
 def getMainRoad(edge):
-    pid = os.getpgid()
+    pid = os.getpid()
     print('start process: {}'.format(pid))
     mainRoad = MainRoad(road)
     meta_id, start_id, end_id = edge

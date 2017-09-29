@@ -65,9 +65,9 @@ def toSql(query, values):
 
 
 def main():
-    edges = get_visual_edge()[1561:]
+    edges = get_visual_edge()[1672:]
     #print(edges[0]);exit()
-    values, i, maxlen = [], 1561, len(edges) + 1561
+    values, i, maxlen = [], 1672, len(edges) + 1672
     query = 'INSERT INTO main_path (edge_meta_id, start_group_time, end_group_time, path, weekday) values(%s, %s, %s, "%s", %s);'
     time_s = time.time()
     with futures.ProcessPoolExecutor(max_workers=6) as pool:

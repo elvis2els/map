@@ -30,14 +30,15 @@ def get_visual_edge():
 
 
 def getMainRoad(edge):
-    print('start process: {}'.format(os.getpid()))
+    pid = os.getpgid()
+    print('start process: {}'.format(pid))
     mainRoad = MainRoad(road)
     meta_id, start_id, end_id = edge
-    print('process {0} weedday begin!'.format(os.getpgid()))
+    print('process {0} weedday begin!'.format(pid))
     mainPath_weekday = mainRoad.getMainPath(start_id, end_id)
-    print('process {0} weedday done!'.format(os.getpgid()))
+    print('process {0} weedday done!'.format(pid))
     mainPath_weekend = mainRoad.getMainPath(start_id, end_id, weekday=False)
-    print('process {0} weedend done!'.format(os.getpgid()))
+    print('process {0} weedend done!'.format(pid))
     return (meta_id, mainPath_weekday, mainPath_weekend)
 
 

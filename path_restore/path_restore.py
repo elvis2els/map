@@ -26,7 +26,8 @@ class EstTime(object):
             database_conf['host'],
             database_conf['user'],
             database_conf['passwd'],
-            database_conf['name']
+            database_conf['name'],
+            port=3306
         )
 
     def est_cross_time(self, start_id, end_id):

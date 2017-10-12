@@ -86,6 +86,10 @@ class Roadmap(object):
         return distance.euclidean(self.getCross(cross1_index), self.getCross(cross2_index))
 
 
-# a = Roadmap('/home/elvis/map/Beijing2011/bj-road-epsg3785.shp')
-# a = Roadmap('/Users/heyulong/Downloads/Beijing2011/bj-road-epsg3785.shp')
-# a.load()
+if __name__ == '__main__':
+    import time
+    time_s = time.time()
+    a = Roadmap('/home/elvis/map/map-shp/Beijing2011/bj-road-epsg3785.shp')
+    # a = Roadmap('/Users/heyulong/Downloads/Beijing2011/bj-road-epsg3785.shp')
+    a.load()
+    print(time.time()-time_s)

@@ -92,9 +92,10 @@ if __name__ == '__main__':
     shp_file = '/home/elvis/map/map-shp/Beijing2011/bj-road-epsg3785.shp'
     gt_file = '/home/elvis/map/map-shp/Beijing2011/bj-road-epsg3785.gt'
     if os.path.exists(gt_file):
-        file = shp_file
-    else:
         file = gt_file
+    else:
+        file = shp_file
     r = RoadMap(file)
     r.load()
-    graph_draw(r.g, pos=r.g.vp.pos, output_size=(1920, 1080), output='/home/elvis/图片/2017-10-12/1.pdf')
+    graph_draw(r.g, pos=r.g.vp.pos, output_size=(600, 600), output='/home/elvis/图片/2017-10-12/2.svg')
+    # graph_draw(r.g, pos=r.g.vp.pos)

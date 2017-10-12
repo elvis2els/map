@@ -68,4 +68,6 @@ def analize_od():
 
 
 if __name__ == '__main__':
+    time_s = time.time()
     analize_od()
+    print("total using time: {}".format(time.time() - time_s))

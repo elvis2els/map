@@ -1,6 +1,7 @@
 import shapefile
 from graph_tool import Graph, load_graph
 from graph_tool.draw import graph_draw
+import os
 
 from scipy.spatial import distance
 
@@ -51,7 +52,7 @@ class RoadMap(object):
             cross_s_index = self.add_cross(road_record.shape.points[0])
             cross_e_index = self.add_cross(road_record.shape.points[-1])
             self.add_road_edge(cross_s_index, cross_e_index, road_record)
-            if int(road_record.record[self.DIRECTION_index]) == 0:       #若路段是双向车道
+            if int(road_record.record[self.DIRECTION_index]) == 0:  # 若路段是双向车道
                 self.add_road_edge(cross_e_index, cross_s_index, road_record)
         return True
 
@@ -88,6 +89,12 @@ class RoadMap(object):
 
 
 if __name__ == '__main__':
-    r = RoadMap('/home/elvis/map/map-shp/Beijing2011/bj-road-epsg3785.gt')
+    shp_file = '/home/elvis/map/map-shp/Beijing2011/bj-road-epsg3785.shp'
+    gt_file = '/home/elvis/map/map-shp/Beijing2011/bj-road-epsg3785.gt'
+    if os.path.exists(gt_file):
+        file = shp_file
+    else:
+        file = gt_file
+    r = RoadMap(file)
     r.load()
     graph_draw(r.g, pos=r.g.vp.pos, output_size=(1920, 1080), output='/home/elvis/图片/2017-10-12/1.pdf')

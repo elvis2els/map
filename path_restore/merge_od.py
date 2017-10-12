@@ -64,7 +64,7 @@ def analize_od():
                 cursor.execute(update_sql)
                 connection.commit()
             list_od.append([traj_detail])
-        print("using time: {}".format(time_s - time.time()))
+        print("using time: {}".format(time.time() - time_s))
 
 
 if __name__ == '__main__':

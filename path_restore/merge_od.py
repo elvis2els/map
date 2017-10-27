@@ -99,6 +99,7 @@ class ODAnalize(object):
                     # print("{},{},{},{}".format(od_group, self.count_two_level(od_list), len(od_list),
                     #                            time.time() - s_time))
                     print('{},{}'.format(od_group, time.time() - s_time))
+                    self.save_od_groups()
                 #
                 # # 测试用
                 # if od_group == 10000:

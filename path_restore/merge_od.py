@@ -99,7 +99,7 @@ class ODAnalize(object):
                     # print("{},{},{},{}".format(od_group, self.count_two_level(od_list), len(od_list),
                     #                            time.time() - s_time))
                     print('{},{}'.format(od_group, time.time() - s_time))
-                    self.save_od_groups()
+                    self.save_od_groups(od_list)
                 #
                 # # 测试用
                 # if od_group == 10000:
@@ -274,18 +274,18 @@ class ODAnalize(object):
         cursor.close()
         connection.close()
 
-    def save_od_groups(self, file=None):
+    def save_od_groups(self, obj, file=None):
         if file is None:
             f = open("od_groups", mode='wb')
         else:
             f = open(file, mode='wb')
-        pickle.dump(self.od_list, f)
+        pickle.dump(obj, f)
         f.close()
 
 
 if __name__ == '__main__':
     time_s = time.time()
-    od_analize = ODAnalize('od_groups')
-    # od_analize.save_od_groups()
-    od_analize.analize(98157, 1218442+1)
+    od_analize = ODAnalize()
+    od_analize.save_od_groups(od_analize.od_list)
+    od_analize.analize(1067188, 1218442+1)
     print("total using time: {}".format(time.time() - time_s))

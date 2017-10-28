@@ -2,10 +2,9 @@
 # -*- coding: UTF-8 -*-
 import os
 
-from DBUtils.PooledDB import PooledDB
-
 from path_restore.gt_roadmap import RoadMap
 from sql_about.MysqlDB import MysqlDB
+import pandas as pd
 
 
 class ImportantCorss(object):
@@ -19,8 +18,7 @@ class ImportantCorss(object):
             pass
 
     def important_score(self, cross):
-        with self.db.cursor() as cursor:
-            query = """SELECT
+        query = """SELECT
                             c.od_group,
                             count(c.metadata_id)
                     FROM (SELECT
@@ -35,7 +33,7 @@ class ImportantCorss(object):
                                 FROM traj_metadata
                                 WHERE od_group IS NOT NULL) AS b ON a.metadata_id = b.id) AS c
                     GROUP BY c.od_group""".format(cross_id=cross)
-            cursor.execute(query)
+        count_od_groups = pd.read_sql_query(query, self.db.connection())
 
 
 if __name__ == '__main__':

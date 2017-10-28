@@ -4,6 +4,7 @@
 import pymysql
 from DBUtils.PooledDB import PooledDB
 
+
 class MysqlDB(object):
     def __init__(self, max_num, host, user, passwd, db, port='3306'):
         self.pool = PooledDB(pymysql, max_num, host=host, user=user, passwd=passwd, db=db, port=port)
@@ -19,3 +20,6 @@ class MysqlDB(object):
         finally:
             cursor.close()
             connection.close()
+
+    def connection(self):
+        return self.pool.connection()

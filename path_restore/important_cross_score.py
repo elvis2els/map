@@ -62,8 +62,8 @@ class ImportantCorss(object):
     def score_to_sql(self, cross_id, score, type_id):
         """计算好的结果存入数据库"""
         with self.db.cursor() as cursor:
-            insert = "INSERT INTO visual_cross (cross_id, type, score) VALUES ({cross_id},{type},{score})".format(
-                cross_id=cross_id, score=score, type_id=type_id)
+            insert = """INSERT INTO visual_cross (cross_id, type, score) VALUES ({cross_id},{type_id},{score}) 
+                        ON DUPLICATE KEY UPDATE score={score}""".format(cross_id=cross_id, score=score, type_id=type_id)
             cursor.execute(insert)
 
 
@@ -75,3 +75,4 @@ if __name__ == '__main__':
     else:
         file = shp_file
     important_cross = ImportantCorss(file)
+    important_cross.compute_all_cross()

@@ -33,14 +33,15 @@ class ODAnalize(object):
         od_list = []  # 30%, 60%, 80%相似度, 节点存(ross集合, min(轨迹长度))
         base_od_group, interval = 0, 11000
         s_time = time.time()
-        while base_od_group <= max_od_group + 1:
+        while base_od_group <= max_od_group:
             query = "SELECT od_group, path FROM traj_metadata WHERE od_group>={} and od_group<={}".format(base_od_group,
                                                                                                           min(
                                                                                                               base_od_group + interval,
-                                                                                                              max_od_group + 1))
+                                                                                                              max_od_group))
+            print(query)
             paths = pd.read_sql_query(query, connection)
             count_od = 0
-            for od_group in range(base_od_group, min(base_od_group + 11000, max_od_group)):
+            for od_group in range(base_od_group, min(base_od_group + interval + 1, max_od_group + 1)):
                 count_od += 1
                 new_od_list = paths[paths.od_group == od_group]
                 if len(new_od_list) == 0:
@@ -105,7 +106,7 @@ class ODAnalize(object):
                 # if od_group == 10000:
                 #     return od_list, od_group
 
-            base_od_group = min(base_od_group + interval, max_od_group + 1)
+            base_od_group = min(base_od_group + interval + 1, max_od_group + 1)
         cursor.close()
         connection.close()
         return od_list, max_od_group

@@ -1,14 +1,13 @@
 #!/usr/bin/python3
 # -*- coding: UTF-8 -*-
 import os
-from concurrent.futures import ProcessPoolExecutor, as_completed
 
 import numpy as np
 import pandas as pd
-
 from gt_roadmap import RoadMap
+from progressbar import Percentage, Bar, ETA, ProgressBar
+
 from sql_about.MysqlDB import MysqlDB
-from progressbar import Percentage, Bar, ETA, FileTransferSpeed, ProgressBar
 
 
 class ImportantCorss(object):
@@ -81,6 +80,12 @@ class ImportantCorss(object):
             insert = """INSERT INTO visual_cross (cross_id, type, score) VALUES ({cross_id},{type_id},{score}) 
                         ON DUPLICATE KEY UPDATE score={score}""".format(cross_id=cross_id, score=score, type_id=type_id)
             cursor.execute(insert)
+
+    def write_to_shp(self, path, type_id):
+        query = "SELECT cross_id, score FROM visual_cross WHERE type={type_id} ORDER BY score DESC".format(type_id=type_id)
+        cross_scores = pd.read_sql_query(query, self.db.connection())
+        cross_scores['pos']
+
 
 
 if __name__ == '__main__':

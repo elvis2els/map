@@ -1,8 +1,10 @@
 #!/usr/bin/python3
 # -*- coding: UTF-8 -*-
 import os
+from concurrent.futures import ProcessPoolExecutor, as_completed
 
-from DBUtils.PooledDB import PooledDB
+import numpy as np
+import pandas as pd
 
 from path_restore.gt_roadmap import RoadMap
 from sql_about.MysqlDB import MysqlDB
@@ -15,14 +17,22 @@ class ImportantCorss(object):
         self.db = MysqlDB(5, host='192.168.3.199', user='root', passwd='123456', db='path_restore')
 
     def compute_all_cross(self):
-        for cross in self.map.g.vertices():
-            pass
+        type_id = self.get_type_id('count*od_group')
+        with ProcessPoolExecutor(max_workers=16) as executor:
+            futures = {executor.submit(self.important_score(), cross) for cross in self.map.g.vertices()}
+            for future in as_completed(futures):
+                cross_id = futures[future]
+                try:
+                    score = future.result()
+                    self.score_to_sql(cross_id, score, type_id)
+                except Exception as e:
+                    print(str(e))
 
-    def important_score(self, cross):
-        with self.db.cursor() as cursor:
-            query = """SELECT
+    def important_score(self, cross_id):
+        """计算路口重要性分数"""
+        query = """SELECT
                             c.od_group,
-                            count(c.metadata_id)
+                            count(c.metadata_id) AS count
                     FROM (SELECT
                             a.metadata_id,
                             b.od_group
@@ -34,8 +44,27 @@ class ImportantCorss(object):
                                     od_group
                                 FROM traj_metadata
                                 WHERE od_group IS NOT NULL) AS b ON a.metadata_id = b.id) AS c
-                    GROUP BY c.od_group""".format(cross_id=cross)
+                    GROUP BY c.od_group""".format(cross_id=cross_id)
+        count_od_groups = pd.read_sql_query(query, self.db.connection())
+        sum_count = count_od_groups['count'].sum()
+        p = count_od_groups['count'] / sum_count
+        od_group_score = -count_od_groups['count'] * p * np.log2(p)
+        return od_group_score.sum()
+
+    def get_type_id(self, visual_type):
+        """获取type对应id"""
+        with self.db.cursor() as cursor:
+            query = "SELECT id FROM visual_type WHERE type = {}".format(visual_type)
             cursor.execute(query)
+            type_id = cursor.fetchone()[0]
+        return type_id
+
+    def score_to_sql(self, cross_id, score, type_id):
+        """计算好的结果存入数据库"""
+        with self.db.cursor() as cursor:
+            insert = "INSERT INTO visual_cross (cross_id, type, score) VALUES ({cross_id},{type},{score})".format(
+                cross_id=cross_id, score=score, type_id=type_id)
+            cursor.execute(insert)
 
 
 if __name__ == '__main__':
@@ -45,5 +74,4 @@ if __name__ == '__main__':
         file = gt_file
     else:
         file = shp_file
-    r = RoadMap(file)
-    r.load()
+    important_cross = ImportantCorss(file)

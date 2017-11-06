@@ -6,8 +6,10 @@ import numpy as np
 import pandas as pd
 from gt_roadmap import RoadMap
 from progressbar import Percentage, Bar, ETA, ProgressBar
+from shapely.geometry import Point
 
 from sql_about.MysqlDB import MysqlDB
+import geopandas
 
 
 class ImportantCorss(object):
@@ -82,10 +84,14 @@ class ImportantCorss(object):
             cursor.execute(insert)
 
     def write_to_shp(self, path, type_id):
-        query = "SELECT cross_id, score FROM visual_cross WHERE type={type_id} ORDER BY score DESC".format(type_id=type_id)
+        query = "SELECT cross_id, score FROM visual_cross WHERE type={type_id} ORDER BY score DESC".format(
+            type_id=type_id)
         cross_scores = pd.read_sql_query(query, self.db.connection())
-        cross_scores['pos']
-
+        cross_scores['rank'] = cross_scores.index
+        cross_scores['geometry'] = cross_scores.apply(lambda x: Point(self.map.g.vertex_properties['pos'][x.cross_id]),
+                                                      axis=1)
+        cross_scores = geopandas.GeoDataFrame(cross_scores, geometry='geometry')
+        cross_scores.to_file(path)
 
 
 if __name__ == '__main__':
@@ -96,4 +102,5 @@ if __name__ == '__main__':
     else:
         file = shp_file
     important_cross = ImportantCorss(file)
+    important_cross.write_to_shp('/home/elvis/map/map-shp/Beijing2011/count_od_group.shp', 3)
     important_cross.compute_all_cross()

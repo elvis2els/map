@@ -64,8 +64,8 @@ class ImportantCorss(object):
                     GROUP BY c.od_group""".format(cross_id=cross_id)
         count_od_groups = pd.read_sql_query(query, self.db.connection())
         sum_count = count_od_groups['count'].sum()
-        p = count_od_groups['count'] / sum_count
-        od_group_score = -count_od_groups['count'] * p * np.log2(p)
+        count_od_groups['p'] = count_od_groups['count'] / sum_count
+        od_group_score = -count_od_groups['count'] * count_od_groups['p'] * np.log2(count_od_groups['p'])
         return od_group_score.sum()
 
     def get_type_id(self, visual_type):
@@ -83,14 +83,44 @@ class ImportantCorss(object):
                         ON DUPLICATE KEY UPDATE score={score}""".format(cross_id=cross_id, score=score, type_id=type_id)
             cursor.execute(insert)
 
-    def write_to_shp(self, path, type_id):
-        query = "SELECT cross_id, score FROM visual_cross WHERE type={type_id} ORDER BY score DESC".format(
-            type_id=type_id)
+    def get_score(self, score_type):
+        """获取计算出的结果"""
+        query = None
+        if score_type == 'od_group':
+            query = "SELECT cross_id, score FROM visual_cross WHERE type=3 ORDER BY score DESC"
+        elif score_type == 'od_group*entropy':
+            query = """SELECT
+                                    b.cross_id,
+                                    b.od_group * b.entropy AS score
+                                FROM
+                                    (SELECT
+                                        a0.cross_id,
+                                        a0.score          AS od_group,
+                                        CASE WHEN a1.score IS NULL
+                                        THEN 0
+                                        ELSE a1.score END AS entropy
+                                    FROM (
+                                            SELECT
+                                                cross_id,
+                                                type,
+                                                score
+                                            FROM visual_cross
+                                            WHERE type = 3
+                                            ) AS a0 LEFT JOIN (SELECT
+                                                                cross_id,
+                                                                type,
+                                                                score
+                                                            FROM visual_cross
+                                                            WHERE type = 1) AS a1
+                                            ON a0.cross_id = a1.cross_id) AS b
+                                ORDER BY score DESC"""
         cross_scores = pd.read_sql_query(query, self.db.connection())
         cross_scores['rank'] = cross_scores.index
-        cross_scores['geometry'] = cross_scores.apply(lambda x: Point(self.map.g.vertex_properties['pos'][x.cross_id]),
-                                                      axis=1)
-        cross_scores = geopandas.GeoDataFrame(cross_scores, geometry='geometry')
+        return cross_scores
+
+    def write_to_shp(self, path, df):
+        df['geometry'] = df.apply(lambda x: Point(self.map.g.vertex_properties['pos'][x.cross_id]), axis=1)
+        cross_scores = geopandas.GeoDataFrame(df, geometry='geometry')
         cross_scores.to_file(path)
 
 
@@ -102,5 +132,7 @@ if __name__ == '__main__':
     else:
         file = shp_file
     important_cross = ImportantCorss(file)
-    important_cross.write_to_shp('/home/elvis/map/map-shp/Beijing2011/count_od_group.shp', 3)
-    important_cross.compute_all_cross()
+    important_cross.important_score(11947)
+    # df = important_cross.get_score(score_type='od_group*entropy')
+    # important_cross.write_to_shp('/home/elvis/map/analize/analizeCross/od_group*entropy.shp', df)
+    # important_cross.compute_all_cross()

@@ -31,8 +31,8 @@ class ImportantCorss(object):
     #             except Exception as e:
     #                 print(str(e))
 
-    def compute_all_cross(self):
-        type_id = self.get_type_id('count*od_group')
+    def compute_all_cross(self, type_name):
+        type_id = self.get_type_id(type_name)
         sum_num = self.map.g.num_vertices()
         widgets = ['Insert: ', Percentage(), ' ', Bar(marker='#'), ' ', ETA()]
         pbar = ProgressBar(widgets=widgets, maxval=sum_num).start()
@@ -65,8 +65,9 @@ class ImportantCorss(object):
         count_od_groups = pd.read_sql_query(query, self.db.connection())
         sum_count = count_od_groups['count'].sum()
         count_od_groups['p'] = count_od_groups['count'] / sum_count
-        od_group_score = -count_od_groups['count'] * count_od_groups['p'] * np.log2(count_od_groups['p'])
-        return od_group_score.sum()
+        # od_group_score = -count_od_groups['count'] * count_od_groups['p'] * np.log2(count_od_groups['p'])
+        od_group_score = -count_od_groups['p'] * np.log2(count_od_groups['p'])
+        return od_group_score.sum() * sum_count
 
     def get_type_id(self, visual_type):
         """获取type对应id"""
@@ -88,6 +89,8 @@ class ImportantCorss(object):
         query = None
         if score_type == 'od_group':
             query = "SELECT cross_id, score FROM visual_cross WHERE type=3 ORDER BY score DESC"
+        elif score_type == 'od_group_v2':
+            query = "SELECT cross_id, score FROM visual_cross WHERE type=4 ORDER BY score DESC"
         elif score_type == 'od_group*entropy':
             query = """SELECT
                                     b.cross_id,
@@ -132,7 +135,7 @@ if __name__ == '__main__':
     else:
         file = shp_file
     important_cross = ImportantCorss(file)
-    important_cross.important_score(11947)
-    # df = important_cross.get_score(score_type='od_group*entropy')
-    # important_cross.write_to_shp('/home/elvis/map/analize/analizeCross/od_group*entropy.shp', df)
-    # important_cross.compute_all_cross()
+    # important_cross.important_score(11947)
+    df = important_cross.get_score(score_type='od_group_v2')
+    important_cross.write_to_shp('/home/elvis/map/analize/analizeCross/od_group*entropy_v2.shp', df)
+    # important_cross.compute_all_cross(type_name='count*od_group_v2')

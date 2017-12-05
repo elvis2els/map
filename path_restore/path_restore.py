@@ -14,6 +14,7 @@ import pymysql
 from Config import Config
 from roadmap import Roadmap
 from graph import MapGraph
+from DBUtils.PooledDB import PooledDB
 
 
 class EstTime(object):
@@ -21,14 +22,7 @@ class EstTime(object):
 
     def __init__(self):
         self.config = Config()
-        database_conf = self.config.getConf('database')
-        self.connection = pymysql.connect(
-            database_conf['host'],
-            database_conf['user'],
-            database_conf['passwd'],
-            database_conf['name'],
-            port=3306
-        )
+        self.pool = PooledDB(pymysql, 5, host='192.168.3.199', user='root', passwd='123456', db='path_restore', port=3306)
 
     def est_cross_time(self, start_id, end_id):
         """估计两点通行时间"""
@@ -37,10 +31,14 @@ class EstTime(object):
             """获取通过该cross的轨迹id"""
             query = "SELECT metadata_id, time FROM traj_data WHERE cross_id={}".format(
                 cross_id)
-            with self.connection.cursor() as cursor:
-                cursor.execute(query)
-                traj_ids = cursor.fetchall()
-                cursor.close()
+            connection = self.pool.connection()
+            cursor = connection.cursor()
+
+            cursor.execute(query)
+            traj_ids = cursor.fetchall()
+
+            cursor.close()
+            connection.close()
             return traj_ids
 
         def merged_trajId(start_id, end_id):
@@ -117,17 +115,19 @@ class EstTime(object):
                 'duration'].groupby(df['time_group']).mean()
             grouped_weekend = df_weekend[
                 'duration'].groupby(df['time_group']).mean()
-            with self.connection.cursor() as cursor:
-                getId_query = 'SELECT id FROM visual_edge WHERE start_cross_id={} and end_cross_id={}'.format(
-                    start_id, end_id)
-                cursor.execute(getId_query)
-                metaId = cursor.fetchone()[0]
-                insert_query = 'INSERT INTO cross_pre_time (edge_meta_id, duration, weekday, time_group) VALUES (%s, %s, %s, %s);'
-                values = valueList(grouped_weekday, metaId, 1)
-                cursor.executemany(insert_query, values)
-                values = valueList(grouped_weekend, metaId, 0)
-                cursor.executemany(insert_query, values)
-            self.connection.commit()
+            connection = self.pool.connection()
+            cursor = connection.cursor()
+            getId_query = 'SELECT id FROM visual_edge_odgroup WHERE start_cross_id={} and end_cross_id={}'.format(start_id, end_id)
+            cursor.execute(getId_query)
+            metaId = cursor.fetchone()[0]
+            insert_query = 'INSERT INTO cross_pre_time_odgroup (edge_meta_id, duration, weekday, time_group) VALUES (%s, %s, %s, %s);'
+            values = valueList(grouped_weekday, metaId, 1)
+            cursor.executemany(insert_query, values)
+            values = valueList(grouped_weekend, metaId, 0)
+            cursor.executemany(insert_query, values)
+            connection.commit()
+            cursor.close()
+            connection.close()
 
         filebase = '{}to{}'.format(start_id, end_id)
         dirpath = os.path.join(self.config.getConf(
@@ -141,22 +141,23 @@ class EstTime(object):
 
     def getEstTime(self, start_id, end_id, weekday=True):
         """获取两点间通行时间"""
-        with self.connection.cursor() as cursor:
-            query = 'SELECT id FROM visual_edge WHERE start_cross_id={} AND end_cross_id={}'.format(
+        connection = self.pool.connection()
+        cursor = connection.cursor()
+        query = 'SELECT id FROM visual_edge_odgroup WHERE start_cross_id={} AND end_cross_id={}'.format(
                 start_id, end_id)
-            cursor.execute(query)
-            metaid = cursor.fetchone()
-            if len(metaid) == 0:
-                return pd.DataFrame(columns=['time_group', 'duration'])
-            metaid = metaid[0]
+        cursor.execute(query)
+        metaid = cursor.fetchone()
+        if len(metaid) == 0:
+            return pd.DataFrame(columns=['time_group', 'duration'])
+        metaid = metaid[0]
 
         if weekday:
             weekday = 1
         else:
             weekday = 0
-        query = 'SELECT time_group, duration FROM cross_pre_time WHERE edge_meta_id={} AND weekday={}'.format(
+        query = 'SELECT time_group, duration FROM cross_pre_time_odgroup WHERE edge_meta_id={} AND weekday={}'.format(
             metaid, weekday)
-        return pd.read_sql_query(query, self.connection, index_col=['time_group'])
+        return pd.read_sql_query(query, connection, index_col=['time_group'])
 
 
 class MainRoad(object):
@@ -165,14 +166,7 @@ class MainRoad(object):
         self.estTime = EstTime()
         self.road = road
         self.show_detail = show_detail
-        database_conf = self.config.getConf('database')
-        self.connection = pymysql.connect(
-            host=database_conf['host'],
-            port=3306,
-            user=database_conf['user'],
-            passwd=database_conf['passwd'],
-            db=database_conf['name']
-        )
+        self.pool = PooledDB(pymysql, 5, host='192.168.3.199', user='root', passwd='123456', db='path_restore',port=3306)
         # if not self.road.load():
         #     print('map shp load error!')
         #     exit()
@@ -185,10 +179,12 @@ class MainRoad(object):
             """获取通过指定路口的轨迹id和时间"""
             query = "SELECT metadata_id, time FROM traj_data WHERE cross_id={}".format(
                 cross_id)
-            with self.connection.cursor() as cursor:
-                cursor.execute(query)
-                traj_ids = cursor.fetchall()
-                cursor.close()
+            connection = self.pool.connection()
+            cursor = connection.cursor()
+            cursor.execute(query)
+            traj_ids = cursor.fetchall()
+            cursor.close()
+            connection.close()
             return traj_ids
 
         def getGroupTime(time_group):
@@ -220,10 +216,12 @@ class MainRoad(object):
 
             query = "SELECT cross_id FROM traj_data WHERE metadata_id={} and time>=\"{}\" and time<=\"{}\"".format(
                 meta_id, time, max_time)
-            with self.connection.cursor() as cursor:
-                cursor.execute(query)
-                traj = cursor.fetchall()
-                cursor.close()
+            connection = self.pool.connection()
+            cursor = connection.cursor()
+            cursor.execute(query)
+            traj = cursor.fetchall()
+            cursor.close()
+            connection.close()
             cross_id = [c_id[0] for c_id in traj]
             # if kind == 'end':
             #     cross_id = cross_id[::-1]      #统一成start来处理

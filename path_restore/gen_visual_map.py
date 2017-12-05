@@ -22,7 +22,7 @@ def readShp(shpfile):
     max_rank = int(args.filter)
     if max_rank > len(records):
         max_rank = len(records)
-    return pd.DataFrame.from_records(records, columns=['rank', 'cross_index', 'count', 'entropy'], index='rank')[:max_rank]
+    return pd.DataFrame.from_records(records, columns=['cross_index', 'entropy', 'rank'], index='rank')[:max_rank]
 
 
 def chunks(l, n):
@@ -99,7 +99,7 @@ def gen_graph(traj_df):
 
 def edge_to_mysql(G):
     with connection.cursor() as cursor:
-        insert_query = 'INSERT INTO visual_edge (start_cross_id, end_cross_id, weight) values(%s, %s, %s);'
+        insert_query = 'INSERT INTO visual_edge_odgroup (start_cross_id, end_cross_id, weight) values(%s, %s, %s);'
         values = []
         for edge in G.edges_iter(data='weight'):
             values.append((int(edge[0][:-2]), int(edge[1][:-2]), int(edge[2])))
@@ -116,10 +116,11 @@ main_cross = set(shp_df['cross_index'])
 
 
 def main():
-    traj_df = traj2mainCross()
-    G = gen_graph(traj_df)
+    # traj_df = traj2mainCross()
+    # G = gen_graph(traj_df)
     dirpath = config.getConf('analizeTime')['homepath']
-    nx.write_gexf(G, os.path.join(dirpath, 'visualMapTop{}.gexf'.format(args.filter)))
+    # nx.write_gexf(G, os.path.join(dirpath, 'visualMapTop{}.gexf'.format(args.filter)))
+    G = nx.read_gexf(os.path.join(dirpath, 'visualMapTop{}.gexf'.format(args.filter)))
     edge_to_mysql(G)
 
 if __name__ == '__main__':

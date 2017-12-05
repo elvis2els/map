@@ -2,6 +2,7 @@
 # -*- coding: UTF-8 -*-
 from graph_tool import Graph
 from graph_tool.topology import all_paths, shortest_distance
+import time
 
 
 class MapGraph(object):
@@ -57,8 +58,11 @@ class MapGraph(object):
 
     def all_paths(self, s_label, e_label):
         if self.has_vertex(s_label) and self.has_vertex(e_label):
+            time_s = time.time()
             s_vertex = self.dvertex_index.get(s_label)
             e_vertex = self.dvertex_index.get(e_label)
             for path in all_paths(self.g, s_vertex, e_vertex,
                                   cutoff=shortest_distance(self.g, s_vertex, e_vertex) * 1.5):
+                if time.time() - time_s > 60*10:
+                    break
                 yield path

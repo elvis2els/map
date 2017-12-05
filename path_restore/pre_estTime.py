@@ -14,7 +14,7 @@ def get_visual_edge():
             database_conf['passwd'],
             database_conf['name'])
     with connection.cursor() as cursor:
-        query = 'SELECT start_cross_id, end_cross_id FROM visual_edge'
+        query = 'SELECT start_cross_id, end_cross_id FROM visual_edge_odgroup'
         cursor.execute(query)
         edges = cursor.fetchall()
         return edges
@@ -22,8 +22,8 @@ def get_visual_edge():
 def main():
     edges = get_visual_edge()
     est = EstTime()
-    time_s, i, maxlen = time.time(), 6235, len(edges)
-    for edge in edges:
+    time_s, i, maxlen = time.time(), 6673, len(edges)
+    for edge in edges[6673:]:
         if time.time() - time_s > 1:
             print('{}/{}'.format(i, maxlen), end='\r')
             time_s = time.time()

@@ -9,6 +9,9 @@ import pymysql
 from Config import Config
 from path_restore import MainRoad
 from roadmap import Roadmap
+from DBUtils.PooledDB import PooledDB
+
+pool = PooledDB(pymysql, 5, host='192.168.3.199', user='root', passwd='123456', db='path_restore', port=3306)
 
 config = Config()
 road = Roadmap(config.getConf('analizeTime')['map_file'])
@@ -23,7 +26,7 @@ def get_visual_edge():
         database_conf['passwd'],
         database_conf['name'])
     with connection.cursor() as cursor:
-        query = 'SELECT id, start_cross_id, end_cross_id FROM visual_edge'
+        query = 'SELECT id, start_cross_id, end_cross_id FROM visual_edge_odgroup'
         cursor.execute(query)
         edges = cursor.fetchall()
         return edges
@@ -55,23 +58,20 @@ def toValues(mfps, meta_id, weekday=True):
 
 
 def toSql(query, values):
-    database_conf = config.getConf('database')
-    connection = pymysql.connect(
-        database_conf['host'],
-        database_conf['user'],
-        database_conf['passwd'],
-        database_conf['name'])
-    with connection.cursor() as cursor:
-        cursor.executemany(query, values)
+    connection = pool.connection()
+    cursor = connection.cursor()
+    cursor.executemany(query, values)
     connection.commit()
+    cursor.close()
+    connection.close()
 
 
 def main():
-    count=6219
+    count = 4000
     edges = get_visual_edge()[count:]
     #print(edges[0]);exit()
     values, i, maxlen = [], count, len(edges) + count
-    query = 'INSERT INTO main_path (edge_meta_id, start_group_time, end_group_time, path, weekday) values(%s, %s, %s, "%s", %s);'
+    query = 'INSERT INTO main_path_odgroup (edge_meta_id, start_group_time, end_group_time, path, weekday) values(%s, %s, %s, "%s", %s);'
     time_s = time.time()
     with futures.ProcessPoolExecutor(max_workers=4) as pool:
         for meta_id, mfp_weekday, mfp_weekend in pool.map(getMainRoad, edges):

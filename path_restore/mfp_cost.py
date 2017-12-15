@@ -133,6 +133,8 @@ GROUP BY time_group, weekday""".format(mfp=mfp_path, start_cross=start_cross, en
 
 def filter_cost(mfp_cost_df):
     """修正异常值,cost不超过前两个时段之和,不小于前两个时段之差,若为异常值,则用前两个时段平均值修正"""
+    if len(mfp_cost_df) <= 2:
+        return mfp_cost_df
     mfp_cost_df.reset_index(drop=True, inplace=True)
     pre_1, pre_2 = mfp_cost_df.loc[1, 'avg_cost'], mfp_cost_df.loc[0, 'avg_cost']  # 前第一个和前第二个的平均cost
     for i in range(2, len(mfp_cost_df)):

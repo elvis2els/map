@@ -198,13 +198,12 @@ def mfp_cost(edge_meta_id):
     return mfp_cost_group
 
 
-
 def main():
     edge_meta_ids = get_edge_meta_ids()
     i, max_len = 0, len(edge_meta_ids)
     print('begin')
-    with futures.ProcessPoolExecutor(max_workers=8) as pool:
-        for mfp_cost_group in pool.map(mfp_cost, edge_meta_ids):
+    with futures.ProcessPoolExecutor(max_workers=8) as process_pool:
+        for mfp_cost_group in process_pool.map(mfp_cost, edge_meta_ids):
             to_sql(mfp_cost_group)
             print('{}/{} done'.format(i, max_len))
 

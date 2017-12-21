@@ -152,6 +152,10 @@ def group_time_cost(mfp_path, mfp_cost_detail, mfp_detail_df, edge_id):
     for index, time_range in mfp_time_range.iterrows():
         start_time, end_time, weekday = time_range
         mfp_cost_df = mfp_cost_detail[mfp_cost_detail['weekday'] == weekday]
+        if len(mfp_cost_df) == 0:   # 若不存在直接到达的路段,则该mfp路径为拼接出来的.暂时以0填充，之后再修正
+            for time_group in range(start_time, end_time + 1):
+                mfp_cost_ret.append([edge_id, time_group, 0, int(weekday)])
+            continue
         index_set = set(mfp_cost_df.index)
         min_index, max_index = min(index_set), max(index_set)
         for time_group in range(start_time, end_time + 1):
@@ -201,13 +205,14 @@ def mfp_cost(edge_meta_id):
 
 
 def main():
-    edge_meta_ids = get_edge_meta_ids()
-    i, max_len = 0, len(edge_meta_ids)
+    edge_meta_ids = get_edge_meta_ids()[88:]
+    i, max_len = 89, len(edge_meta_ids)
+    s_time = time.time()
     print('begin')
-    with futures.ProcessPoolExecutor(max_workers=8) as process_pool:
-        for mfp_cost_group in process_pool.map(mfp_cost, edge_meta_ids):
-            to_sql(mfp_cost_group)
-            print('{}/{} done'.format(i, max_len))
+    for mfp_cost_group in map(mfp_cost, edge_meta_ids):
+        to_sql(mfp_cost_group)
+        print('{}/{} done using time {}'.format(i, max_len, time.time() - s_time))
+        i += 1
 
 
 if __name__ == '__main__':

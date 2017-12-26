@@ -67,8 +67,8 @@ def toSql(query, values):
 
 
 def main():
-    count = 4000
-    edges = get_visual_edge()[count:]
+    count = 2062
+    edges = get_visual_edge()[count:4000]
     #print(edges[0]);exit()
     values, i, maxlen = [], count, len(edges) + count
     query = 'INSERT INTO main_path_odgroup (edge_meta_id, start_group_time, end_group_time, path, weekday) values(%s, %s, %s, "%s", %s);'

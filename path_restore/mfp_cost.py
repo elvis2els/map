@@ -5,6 +5,7 @@ from concurrent import futures
 
 import pymysql
 import pandas as pd
+import numpy as np
 
 from DBUtils.PooledDB import PooledDB
 
@@ -62,73 +63,169 @@ def single_mfp_cost(mfp_path):
     start_cross, end_cross = mfp_path_list[0], mfp_path_list[-1]
     query = """
 SELECT
-  avg(cost) AS avg_cost,
-  time_group,
-  weekday
+  unix_timestamp(end_time) - unix_timestamp(start_time) AS cost,
+  (hour(start_time) * 60 + minute(start_time)) DIV 15   AS time_group,
+  CASE WHEN weekday(start_time) < 5
+    THEN 1
+  ELSE 0 END                                            AS weekday
 FROM (
        SELECT
-         unix_timestamp(end_time) - unix_timestamp(start_time) AS cost,
-         (hour(start_time) * 60 + minute(start_time)) DIV 15   AS time_group,
-         CASE WHEN weekday(start_time) < 5
-           THEN 1
-         ELSE 0 END                                            AS weekday
+         b0.metadata_id,
+         start_time,
+         time AS end_time
        FROM (
               SELECT
-                b0.metadata_id,
-                start_time,
-                time AS end_time
+                metadata_id,
+                time AS start_time
               FROM (
-                     SELECT
-                       metadata_id,
-                       time AS start_time
-                     FROM (
-                            SELECT id
-                            FROM traj_metadata
-                            WHERE path LIKE '%{mfp}%') AS a0
-                       JOIN (SELECT
-                               traj1.metadata_id,
-                               time
-                             FROM (
-                                    SELECT
-                                      metadata_id,
-                                      time
-                                    FROM traj_data
-                                    WHERE cross_id = {start_cross}) AS traj1
-                               JOIN (SELECT metadata_id
-                                     FROM traj_data
-                                     WHERE cross_id = {start_cross}
-                                     GROUP BY metadata_id
-                                     HAVING count(metadata_id) = 1) AS traj2 ON traj1.metadata_id = traj2.metadata_id
-                            ) AS a1 ON a0.id = a1.metadata_id) AS b0
+                     SELECT id
+                     FROM traj_metadata
+                     WHERE path LIKE '%{mfp}%') AS a0
                 JOIN (SELECT
-                        traj3.metadata_id,
+                        traj1.metadata_id,
                         time
                       FROM (
                              SELECT
                                metadata_id,
                                time
                              FROM traj_data
-                             WHERE cross_id = {end_cross}) AS traj3
+                             WHERE cross_id = {start_cross}) AS traj1
                         JOIN (SELECT metadata_id
                               FROM traj_data
-                              WHERE cross_id = {end_cross}
+                              WHERE cross_id = {start_cross}
                               GROUP BY metadata_id
-                              HAVING count(metadata_id) = 1) AS traj4 ON traj3.metadata_id = traj4.metadata_id) AS b1
-                  ON b0.metadata_id = b1.metadata_id) AS c) AS d
-GROUP BY time_group, weekday""".format(mfp=mfp_path, start_cross=start_cross, end_cross=end_cross)
+                              HAVING count(metadata_id) = 1) AS traj2 ON traj1.metadata_id = traj2.metadata_id
+                     ) AS a1 ON a0.id = a1.metadata_id) AS b0
+         JOIN (SELECT
+                 traj3.metadata_id,
+                 time
+               FROM (
+                      SELECT
+                        metadata_id,
+                        time
+                      FROM traj_data
+                      WHERE cross_id = {end_cross}) AS traj3
+                 JOIN (SELECT metadata_id
+                       FROM traj_data
+                       WHERE cross_id = {end_cross}
+                       GROUP BY metadata_id
+                       HAVING count(metadata_id) = 1) AS traj4 ON traj3.metadata_id = traj4.metadata_id) AS b1
+           ON b0.metadata_id = b1.metadata_id) AS c""".format(mfp=mfp_path, start_cross=start_cross,
+                                                              end_cross=end_cross)
 
     connection = pool.connection()
-    cursor = connection.cursor()
     try:
         mfp_cost_df = pd.read_sql_query(query, connection)
-        mfp_cost_weekday = mfp_cost_df[mfp_cost_df['weekday'] == 1].sort_values(by=['time_group'])
-        mfp_cost_weekend = mfp_cost_df[mfp_cost_df['weekday'] == 0].sort_values(by=['time_group'])
+        mfp_cost_weekday = mfp_cost_df[mfp_cost_df['weekday'] == 1]
+        mfp_cost_weekday = filter_outlier_cost(mfp_cost_weekday)
+        mfp_cost_weekend = mfp_cost_df[mfp_cost_df['weekday'] == 0]
+        mfp_cost_weekend = filter_outlier_cost(mfp_cost_weekend)
+        mfp_cost_weekday, mfp_cost_weekend = mfp_avg_cost(mfp_cost_weekday, mfp_cost_weekend)
+
         return filter_cost(mfp_cost_weekday).append(filter_cost(mfp_cost_weekend)).set_index('time_group', drop=True)
     except Exception as e:
         print(e)
     finally:
-        cursor.close()
         connection.close()
+
+
+def filter_outlier_cost(mfp_cost_df):
+    """用箱线图过滤"""
+    grouped = mfp_cost_df.groupby('time_group')
+    mfp_cost_df['lower'] = grouped['cost'].transform(
+        lambda x: x.quantile(q=.25) - (1.5 * (x.quantile(q=.75) - x.quantile(q=.25))))
+    mfp_cost_df['upper'] = grouped['cost'].transform(
+        lambda x: x.quantile(q=.25) + (1.5 * (x.quantile(q=.75) - x.quantile(q=.25))))
+    mfp_cost_df = mfp_cost_df[(mfp_cost_df['cost'] >= mfp_cost_df['lower']) & (mfp_cost_df['cost'] <= mfp_cost_df['upper'])]
+    del mfp_cost_df['lower']
+    del mfp_cost_df['upper']
+    return mfp_cost_df
+
+
+def mfp_avg_cost(mfp_cost_weekday, mfp_cost_weekend):
+    grouped = mfp_cost_weekday.groupby('time_group', as_index=False)
+    weekday_df = grouped['cost'].aggregate(np.mean)
+    weekday_df['weekday'] = 1
+
+    grouped = mfp_cost_weekend.groupby('time_group', as_index=False)
+    weekend_df = grouped['cost'].aggregate(np.mean)
+    weekend_df['weekday'] = 0
+    return weekday_df, weekend_df
+
+
+# def single_mfp_cost(mfp_path):
+#     """获取mfp_path每个时间段的平均通行时间"""
+#     mfp_path_list = mfp_path.split(", ")
+#     start_cross, end_cross = mfp_path_list[0], mfp_path_list[-1]
+#     query = """
+# SELECT
+#   avg(cost) AS avg_cost,
+#   time_group,
+#   weekday
+# FROM (
+#        SELECT
+#          unix_timestamp(end_time) - unix_timestamp(start_time) AS cost,
+#          (hour(start_time) * 60 + minute(start_time)) DIV 15   AS time_group,
+#          CASE WHEN weekday(start_time) < 5
+#            THEN 1
+#          ELSE 0 END                                            AS weekday
+#        FROM (
+#               SELECT
+#                 b0.metadata_id,
+#                 start_time,
+#                 time AS end_time
+#               FROM (
+#                      SELECT
+#                        metadata_id,
+#                        time AS start_time
+#                      FROM (
+#                             SELECT id
+#                             FROM traj_metadata
+#                             WHERE path LIKE '%{mfp}%') AS a0
+#                        JOIN (SELECT
+#                                traj1.metadata_id,
+#                                time
+#                              FROM (
+#                                     SELECT
+#                                       metadata_id,
+#                                       time
+#                                     FROM traj_data
+#                                     WHERE cross_id = {start_cross}) AS traj1
+#                                JOIN (SELECT metadata_id
+#                                      FROM traj_data
+#                                      WHERE cross_id = {start_cross}
+#                                      GROUP BY metadata_id
+#                                      HAVING count(metadata_id) = 1) AS traj2 ON traj1.metadata_id = traj2.metadata_id
+#                             ) AS a1 ON a0.id = a1.metadata_id) AS b0
+#                 JOIN (SELECT
+#                         traj3.metadata_id,
+#                         time
+#                       FROM (
+#                              SELECT
+#                                metadata_id,
+#                                time
+#                              FROM traj_data
+#                              WHERE cross_id = {end_cross}) AS traj3
+#                         JOIN (SELECT metadata_id
+#                               FROM traj_data
+#                               WHERE cross_id = {end_cross}
+#                               GROUP BY metadata_id
+#                               HAVING count(metadata_id) = 1) AS traj4 ON traj3.metadata_id = traj4.metadata_id) AS b1
+#                   ON b0.metadata_id = b1.metadata_id) AS c) AS d
+# GROUP BY time_group, weekday""".format(mfp=mfp_path, start_cross=start_cross, end_cross=end_cross)
+#
+#     connection = pool.connection()
+#     cursor = connection.cursor()
+#     try:
+#         mfp_cost_df = pd.read_sql_query(query, connection)
+#         mfp_cost_weekday = mfp_cost_df[mfp_cost_df['weekday'] == 1].sort_values(by=['time_group'])
+#         mfp_cost_weekend = mfp_cost_df[mfp_cost_df['weekday'] == 0].sort_values(by=['time_group'])
+#         return filter_cost(mfp_cost_weekday).append(filter_cost(mfp_cost_weekend)).set_index('time_group', drop=True)
+#     except Exception as e:
+#         print(e)
+#     finally:
+#         cursor.close()
+#         connection.close()
 
 
 def filter_cost(mfp_cost_df):
@@ -136,12 +233,12 @@ def filter_cost(mfp_cost_df):
     if len(mfp_cost_df) <= 2:
         return mfp_cost_df
     mfp_cost_df.reset_index(drop=True, inplace=True)
-    pre_1, pre_2 = mfp_cost_df.loc[1, 'avg_cost'], mfp_cost_df.loc[0, 'avg_cost']  # 前第一个和前第二个的平均cost
+    pre_1, pre_2 = mfp_cost_df.loc[1, 'cost'], mfp_cost_df.loc[0, 'cost']  # 前第一个和前第二个的平均cost
     for i in range(2, len(mfp_cost_df)):
         avg = (pre_1 + pre_2) / 2
-        if not avg / 3 < mfp_cost_df.loc[i, 'avg_cost'] < avg * 3:
-            mfp_cost_df.loc[i, 'avg_cost'] = (pre_1 + pre_2) / 2
-        pre_2, pre_1 = pre_1, mfp_cost_df.loc[i, 'avg_cost']
+        if not avg / 2.5 < mfp_cost_df.loc[i, 'cost'] < avg * 2.5:
+            mfp_cost_df.loc[i, 'cost'] = (pre_1 + pre_2) / 2
+        pre_2, pre_1 = pre_1, mfp_cost_df.loc[i, 'cost']
     return mfp_cost_df
 
 
@@ -152,7 +249,7 @@ def group_time_cost(mfp_path, mfp_cost_detail, mfp_detail_df, edge_id):
     for index, time_range in mfp_time_range.iterrows():
         start_time, end_time, weekday = time_range
         mfp_cost_df = mfp_cost_detail[mfp_cost_detail['weekday'] == weekday]
-        if len(mfp_cost_df) == 0:   # 若不存在直接到达的路段,则该mfp路径为拼接出来的.暂时以0填充，之后再修正
+        if len(mfp_cost_df) == 0:  # 若不存在直接到达的路段,则该mfp路径为拼接出来的.暂时以0填充，之后再修正
             for time_group in range(start_time, end_time + 1):
                 mfp_cost_ret.append([edge_id, time_group, 0, int(weekday)])
             continue
@@ -160,7 +257,7 @@ def group_time_cost(mfp_path, mfp_cost_detail, mfp_detail_df, edge_id):
         min_index, max_index = min(index_set), max(index_set)
         for time_group in range(start_time, end_time + 1):
             if time_group in index_set:
-                cost = mfp_cost_df['avg_cost'][time_group]
+                cost = mfp_cost_df['cost'][time_group]
             else:
                 # 若无法获取到time_group,则从该时段前后求平均值获取
                 if min_index >= time_group:
@@ -175,13 +272,13 @@ def group_time_cost(mfp_path, mfp_cost_detail, mfp_detail_df, edge_id):
                     post_time_group = time_group + 1
                     while post_time_group not in index_set:
                         post_time_group += 1
-                cost = (mfp_cost_df['avg_cost'][pre_time_group] + mfp_cost_df['avg_cost'][post_time_group]) / 2
+                cost = (mfp_cost_df['cost'][pre_time_group] + mfp_cost_df['cost'][post_time_group]) / 2
             mfp_cost_ret.append([edge_id, time_group, float(cost), int(weekday)])
     return mfp_cost_ret
 
 
 def to_sql(mfp_cost_group):
-    query = "INSERT INTO visual_edge_cost (edge_meta_id, time_group, cost, weekday) values(%s, %s, %s, %s)"
+    query = "INSERT INTO visual_edge_cost_filter (edge_meta_id, time_group, cost, weekday) values(%s, %s, %s, %s)"
     connection = pool.connection()
     cursor = connection.cursor()
     try:
@@ -205,8 +302,8 @@ def mfp_cost(edge_meta_id):
 
 
 def main():
-    edge_meta_ids = get_edge_meta_ids()[88:]
-    i, max_len = 89, len(edge_meta_ids)
+    edge_meta_ids = get_edge_meta_ids()[:]
+    i, max_len = 0, len(edge_meta_ids)
     s_time = time.time()
     print('begin')
     for mfp_cost_group in map(mfp_cost, edge_meta_ids):

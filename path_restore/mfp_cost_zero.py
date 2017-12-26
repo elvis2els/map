@@ -123,6 +123,7 @@ def main():
         cost = mfp_cost(main_path, cost0_detail[1], cost0_detail[2])
         update_sql(cost0_detail, cost)
         print("{}/{} done".format(i, maxlen))
+        i += 1
 
 
 

@@ -116,12 +116,18 @@ FROM (
     connection = pool.connection()
     try:
         mfp_cost_df = pd.read_sql_query(query, connection)
-        mfp_cost_weekday = mfp_cost_df[mfp_cost_df['weekday'] == 1]
-        mfp_cost_weekday = filter_outlier_cost(mfp_cost_weekday)
-        mfp_cost_weekend = mfp_cost_df[mfp_cost_df['weekday'] == 0]
-        mfp_cost_weekend = filter_outlier_cost(mfp_cost_weekend)
-        mfp_cost_weekday, mfp_cost_weekend = mfp_avg_cost(mfp_cost_weekday, mfp_cost_weekend)
-
+        if len(mfp_cost_df) == 0:
+            return pd.DataFrame(columns=['cost', 'time_group', 'weekday'])
+        mfp_cost_weekday = pd.DataFrame(columns=['cost', 'time_group', 'weekday'])
+        mfp_cost_weekend = pd.DataFrame(columns=['cost', 'time_group', 'weekday'])
+        if len(mfp_cost_df[mfp_cost_df['weekday'] == 1]) > 0:
+            mfp_cost_weekday = mfp_cost_df[mfp_cost_df['weekday'] == 1]
+            mfp_cost_weekday = filter_outlier_cost(mfp_cost_weekday)
+            mfp_cost_weekday = mfp_avg_cost(mfp_cost_weekday, weekday=1)
+        if len(mfp_cost_df[mfp_cost_df['weekday'] == 0]) > 0:
+            mfp_cost_weekend = mfp_cost_df[mfp_cost_df['weekday'] == 0]
+            mfp_cost_weekend = filter_outlier_cost(mfp_cost_weekend)
+            mfp_cost_weekend = mfp_avg_cost(mfp_cost_weekend, weekday=0)
         return filter_cost(mfp_cost_weekday).append(filter_cost(mfp_cost_weekend)).set_index('time_group', drop=True)
     except Exception as e:
         print(e)
@@ -142,15 +148,11 @@ def filter_outlier_cost(mfp_cost_df):
     return mfp_cost_df
 
 
-def mfp_avg_cost(mfp_cost_weekday, mfp_cost_weekend):
-    grouped = mfp_cost_weekday.groupby('time_group', as_index=False)
-    weekday_df = grouped['cost'].aggregate(np.mean)
-    weekday_df['weekday'] = 1
-
-    grouped = mfp_cost_weekend.groupby('time_group', as_index=False)
-    weekend_df = grouped['cost'].aggregate(np.mean)
-    weekend_df['weekday'] = 0
-    return weekday_df, weekend_df
+def mfp_avg_cost(mfp_cost_df, weekday):
+    grouped = mfp_cost_df.groupby('time_group', as_index=False)
+    df = grouped['cost'].aggregate(np.mean)
+    df['weekday'] = weekday
+    return df
 
 
 # def single_mfp_cost(mfp_path):
@@ -302,8 +304,8 @@ def mfp_cost(edge_meta_id):
 
 
 def main():
-    edge_meta_ids = get_edge_meta_ids()[:]
-    i, max_len = 0, len(edge_meta_ids)
+    edge_meta_ids = get_edge_meta_ids()[181:]
+    i, max_len = 182, len(edge_meta_ids)
     s_time = time.time()
     print('begin')
     for mfp_cost_group in map(mfp_cost, edge_meta_ids):

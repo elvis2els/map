@@ -4,6 +4,7 @@ import datetime as dt
 import math
 import os
 import time
+import traceback
 
 import matplotlib.pyplot as plt
 import networkx as nx
@@ -22,7 +23,8 @@ class EstTime(object):
 
     def __init__(self):
         self.config = Config()
-        self.pool = PooledDB(pymysql, 5, host='192.168.3.199', user='root', passwd='123456', db='path_restore', port=3306)
+        self.pool = PooledDB(pymysql, 5, host='192.168.3.199', user='root', passwd='123456', db='path_restore',
+                             port=3306)
 
     def est_cross_time(self, start_id, end_id):
         """估计两点通行时间"""
@@ -101,12 +103,39 @@ class EstTime(object):
             grouped_weekend = df_weekend['duration'].groupby(df['time_group'])
             grouped_weekend.mean().to_csv(os.path.join(dirpath, 'weekend-time.csv'))
 
-        def valueList(df, metaid, weekday):
+        # def valueList(df, metaid, weekday):
+        #     values = []
+        #     for time_group, duration in df.iteritems():
+        #         values.append((str(metaid), '%.5f' %
+        #                        duration, str(weekday), str(time_group)))
+        #     return values
+
+        def valueList(df, start_cross, end_cross, weekday):
             values = []
             for time_group, duration in df.iteritems():
-                values.append((str(metaid), '%.5f' %
-                               duration, str(weekday), str(time_group)))
+                values.append((start_cross, end_cross, '%.5f' % duration, str(weekday), str(time_group)))
             return values
+
+        # def to_mysql(df, start_id, end_id):
+        #     df_weekday = df[df['weekday'] < 6]
+        #     df_weekend = df[df['weekday'] >= 6]
+        #     grouped_weekday = df_weekday[
+        #         'duration'].groupby(df['time_group']).mean()
+        #     grouped_weekend = df_weekend[
+        #         'duration'].groupby(df['time_group']).mean()
+        #     connection = self.pool.connection()
+        #     cursor = connection.cursor()
+        #     getId_query = 'SELECT id FROM visual_edge_odgroup WHERE start_cross_id={} and end_cross_id={}'.format(start_id, end_id)
+        #     cursor.execute(getId_query)
+        #     metaId = cursor.fetchone()[0]
+        #     insert_query = 'INSERT INTO cross_pre_time_odgroup (edge_meta_id, duration, weekday, time_group) VALUES (%s, %s, %s, %s);'
+        #     values = valueList(grouped_weekday, metaId, 1)
+        #     cursor.executemany(insert_query, values)
+        #     values = valueList(grouped_weekend, metaId, 0)
+        #     cursor.executemany(insert_query, values)
+        #     connection.commit()
+        #     cursor.close()
+        #     connection.close()
 
         def to_mysql(df, start_id, end_id):
             df_weekday = df[df['weekday'] < 6]
@@ -117,17 +146,20 @@ class EstTime(object):
                 'duration'].groupby(df['time_group']).mean()
             connection = self.pool.connection()
             cursor = connection.cursor()
-            getId_query = 'SELECT id FROM visual_edge_odgroup WHERE start_cross_id={} and end_cross_id={}'.format(start_id, end_id)
-            cursor.execute(getId_query)
-            metaId = cursor.fetchone()[0]
-            insert_query = 'INSERT INTO cross_pre_time_odgroup (edge_meta_id, duration, weekday, time_group) VALUES (%s, %s, %s, %s);'
-            values = valueList(grouped_weekday, metaId, 1)
-            cursor.executemany(insert_query, values)
-            values = valueList(grouped_weekend, metaId, 0)
-            cursor.executemany(insert_query, values)
-            connection.commit()
-            cursor.close()
-            connection.close()
+            try:
+                insert_query = """INSERT INTO cross_pre_time_all
+                            (start_cross, end_cross, cost, weekday, time_group) 
+                            VALUES (%s, %s, %s, %s, %s, %s);"""
+                values = valueList(grouped_weekday, start_id, end_id, 1)
+                cursor.executemany(insert_query, values)
+                values = valueList(grouped_weekend, start_id, end_id, 0)
+                cursor.executemany(insert_query, values)
+                connection.commit()
+            except Exception as e:
+                traceback.print_exc(e)
+            finally:
+                cursor.close()
+                connection.close()
 
         filebase = '{}to{}'.format(start_id, end_id)
         dirpath = os.path.join(self.config.getConf(
@@ -144,7 +176,7 @@ class EstTime(object):
         connection = self.pool.connection()
         cursor = connection.cursor()
         query = 'SELECT id FROM visual_edge_odgroup WHERE start_cross_id={} AND end_cross_id={}'.format(
-                start_id, end_id)
+            start_id, end_id)
         cursor.execute(query)
         metaid = cursor.fetchone()
         if len(metaid) == 0:
@@ -166,7 +198,8 @@ class MainRoad(object):
         self.estTime = EstTime()
         self.road = road
         self.show_detail = show_detail
-        self.pool = PooledDB(pymysql, 5, host='192.168.3.199', user='root', passwd='123456', db='path_restore',port=3306)
+        self.pool = PooledDB(pymysql, 5, host='192.168.3.199', user='root', passwd='123456', db='path_restore',
+                             port=3306)
         # if not self.road.load():
         #     print('map shp load error!')
         #     exit()

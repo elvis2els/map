@@ -113,7 +113,7 @@ class EstTime(object):
         def valueList(df, start_cross, end_cross, weekday):
             values = []
             for time_group, duration in df.iteritems():
-                values.append((start_cross, end_cross, '%.5f' % duration, str(weekday), str(time_group)))
+                values.append((str(start_cross), str(end_cross), '%.5f' % duration, str(weekday), str(time_group)))
             return values
 
         # def to_mysql(df, start_id, end_id):
@@ -149,7 +149,7 @@ class EstTime(object):
             try:
                 insert_query = """INSERT INTO cross_pre_time_all
                             (start_cross, end_cross, cost, weekday, time_group) 
-                            VALUES (%s, %s, %s, %s, %s, %s);"""
+                            VALUES (%s, %s, %s, %s, %s);"""
                 values = valueList(grouped_weekday, start_id, end_id, 1)
                 cursor.executemany(insert_query, values)
                 values = valueList(grouped_weekend, start_id, end_id, 0)

@@ -1,15 +1,19 @@
 import argparse
-import math
 import os
 import time
 from concurrent import futures
 
+import geopandas
 import networkx as nx
 import pandas as pd
 import pymysql
 import shapefile
-
 from Config import Config
+from DBUtils.PooledDB import PooledDB
+from gt_roadmap import RoadMap
+from shapely.geometry import LineString
+
+pool = PooledDB(pymysql, 5, host='192.168.3.199', user='root', passwd='123456', db='path_restore', port=3306)
 
 parser = argparse.ArgumentParser(description="查找两地标间主路段，并计算通行时间，使用前需先清空表visual_edge")
 parser.add_argument('filter', help='仅保留前x个地标')
@@ -33,7 +37,7 @@ def chunks(l, n):
 def projection(metaIds):
     print('开始进程({}), size={}'.format(os.getpid(), len(metaIds)))
     conn = pymysql.connect(database_conf['host'], database_conf[
-                           'user'], database_conf['passwd'], database_conf['name'])
+        'user'], database_conf['passwd'], database_conf['name'])
     traj_df = pd.DataFrame(columns=['start_id', 'end_id'])
     with conn.cursor() as cursor:
         for metaId in metaIds:
@@ -97,6 +101,7 @@ def gen_graph(traj_df):
             G.add_edge(start_id, end_id, weight=weight)
     return G
 
+
 def edge_to_mysql(G):
     with connection.cursor() as cursor:
         insert_query = 'INSERT INTO visual_edge_odgroup (start_cross_id, end_cross_id, weight) values(%s, %s, %s);'
@@ -106,10 +111,26 @@ def edge_to_mysql(G):
         cursor.executemany(insert_query, values)
     connection.commit()
 
+
+def edge_to_shp(G):
+    gt_file = '/home/elvis/map/map-shp/Beijing2011/bj-road-epsg3785.gt'
+    geo_map = RoadMap(gt_file)
+    geo_map.load()
+    edge_geo = []
+    for edge in G.edges_iter():
+        start_cross, end_cross = int(edge[0][:-2]), int(edge[1][:-2])
+        start_pos, end_pos = geo_map.g.vertex_properties['pos'][start_cross], geo_map.g.vertex_properties['pos'][end_cross]
+        edge_geo.append((start_cross, end_cross, LineString([start_pos, end_pos])))
+    df = pd.DataFrame(edge_geo, columns=['start_cross', 'end_cross', 'geometry'])
+    visual_map_df = geopandas.GeoDataFrame(df, geometry='geometry')
+    file_path = '/home/elvis/map/analize/analizeCross/visualmap.shp'
+    visual_map_df.to_file(file_path)
+
+
 config = Config()
 database_conf = config.getConf('database')
 connection = pymysql.connect(database_conf['host'], database_conf[
-                             'user'], database_conf['passwd'], database_conf['name'])
+    'user'], database_conf['passwd'], database_conf['name'])
 shpfile = config.getConf('analizeTime')['cross_file']
 shp_df = readShp(shpfile)
 main_cross = set(shp_df['cross_index'])
@@ -121,7 +142,9 @@ def main():
     dirpath = config.getConf('analizeTime')['homepath']
     # nx.write_gexf(G, os.path.join(dirpath, 'visualMapTop{}.gexf'.format(args.filter)))
     G = nx.read_gexf(os.path.join(dirpath, 'visualMapTop{}.gexf'.format(args.filter)))
-    edge_to_mysql(G)
+    # edge_to_mysql(G)
+    edge_to_shp(G)
+
 
 if __name__ == '__main__':
     start_time = time.time()

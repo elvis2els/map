@@ -28,8 +28,8 @@ class TestPath(object):
         self.path_time = self.get_path(start_index, count)
 
     def get_path(self, start_index, count):
-        file_path = '/home/elvis/map/analize/path_restore/raw_path/{i}-{s}-{c}'.format(i=self.metadata_id,
-                                                                                       s=self.start_index, c=count)
+        file_path = '/home/elvis/map/analize/path_restore/raw_path/{i}-{s}-{c}.txt'.format(i=self.metadata_id,
+                                                                                           s=self.start_index, c=count)
         if os.path.exists(file_path):
             with open(file_path, 'r') as f:
                 path_time = []
@@ -96,7 +96,7 @@ def get_pre_time(start_cross, end_cross, start_cross_time):
             est.est_cross_time(start_cross, end_cross)
             return True
     except Exception as e:
-        print('start_cross:{s} end_cross:{e} is not find'.format(s=start_cross, e=end_cross))
+        # print('start_cross:{s} end_cross:{e} is not find'.format(s=start_cross, e=end_cross))
         return False
     finally:
         cursor.close()
@@ -141,10 +141,13 @@ def find_paths(start_cross, end_cross, visual_map, k=0.3):
     frontier = PriorityQueue()
     frontier.put((delta_time, start_cross[0], start_cross[1], [start_cross], 0))  # 分别代表与目标时间差值,节点号,时间,路径,实际消耗时间
 
-    while not frontier.empty() and len(paths) < 10:
+    i = 0
+    while not frontier.empty() and len(paths) < 30:
         current = frontier.get()
         if current[1] == end_cross[0]:
             paths.append([current[3], current[4]])
+            # print("find path: {}".format(i))
+            i += 1
             if frontier.empty():
                 break
             else:
@@ -199,7 +202,7 @@ def get_mfp(start_cross, end_cross, start_time):
 
 
 def visual_to_map(paths, delta_time):
-    # paths.sort(key=lambda x: abs(x[1] - delta_time))  # 按通行时长接近目标时长排序
+    paths.sort(key=lambda x: abs(x[1] - delta_time))  # 按通行时长接近目标时长排序
     map_paths = []
     for path in paths:
         map_path = []
@@ -213,17 +216,30 @@ def visual_to_map(paths, delta_time):
     return map_paths
 
 
-def to_path_txt(map_paths, file_path):
+def build_txt_detail(map_path):
+    result = ""
+    for cross, cross_time in map_path:
+        result += "{},{}\n".format(cross, cross_time)
+    return result
+
+
+def to_path_txt(map_paths, file_path, mode='all'):
+    if not os.path.exists(os.path.dirname(os.path.dirname(file_path))):
+        os.mkdir(os.path.dirname(os.path.dirname(file_path)))
     if not os.path.exists(os.path.dirname(file_path)):
         os.mkdir(os.path.dirname(file_path))
-    result = ""
+
     i = 0
-    for map_path in map_paths:
-        for cross, cross_time in map_path:
-            result += "{},{}\n".format(cross, cross_time)
-        with open(file_path + '-{}.txt'.format(i), 'w') as f:
+    if mode == 'all':
+        for map_path in map_paths:
+            result = build_txt_detail(map_path)
+            with open(file_path + '-{}.txt'.format(i), 'w') as f:
+                f.write(result)
+                i += 1
+    elif mode == 'best':
+        result = build_txt_detail(map_paths)
+        with open(file_path + '.txt', 'w') as f:
             f.write(result)
-            i += 1
 
 
 def road_score(map_paths):
@@ -293,19 +309,27 @@ def mode_score(map_paths):
     for map_path in map_paths:
         sum_score = 0
         modes = path_mode(map_path)
+        # for mode in modes:
+        #     if mode == 0:
+        #         sum_score += 1
+        #     elif mode == 1:
+        #         sum_score += 0.9
+        #     else:
+        #         sum_score += 0.8
         for mode in modes:
-            if mode == 0:
+            if mode == 1:
                 sum_score += 1
-            elif mode == 1:
-                sum_score += 0.9
-            else:
-                sum_score += 0.8
-        scores.append(sum_score / (len(map_path) - 1))
+            elif mode == -1:
+                sum_score += 2
+        # scores.append(sum_score / (len(map_path) - 1))
+        scores.append(np.sqrt(sum_score * (sum_score - 1)))
     max_score = max(scores)
     min_score = min(scores)
+    if max_score == min_score:
+        return [1] * len(map_paths)
     ret = []
     for score in scores:
-        ret.append(np.e ** (-0.5 * (max_score - score) / (max_score - min_score)))
+        ret.append(np.e ** (0.5 * (min_score - score) / (max_score - min_score)))
     return ret
 
 
@@ -314,29 +338,87 @@ def best_alternative(map_paths, delta_time):
     mtx = road_score(map_paths)
     mtx = np.column_stack((mtx, time_score(map_paths, delta_time), mode_score(map_paths)))
     criteria = [sk.MAX, sk.MAX, sk.MAX]
-    data = sk.Data(mtx, criteria, cnames=['road', 'time', 'turn'])
+    data = sk.Data(mtx, criteria, cnames=['road', 'time', 'turn'], weights=[.4, .2, .4])
     dm = closeness.TOPSIS()
     dec = dm.decide(data)
     return map_paths[dec.best_alternative_]
 
 
-if __name__ == '__main__':
-    time_s = time.time()
-    # meta_id, start_index, count = 1, 0, 9
-    meta_id, start_index, count = 539, 28, 50
+def similarity(restore_path, origin_path):
+    """计算还原轨迹和原始轨迹相似度"""
+    restore_cross = [path[0] for path in restore_path]
+    origin_cross = [path[0] for path in origin_path]
+    intersection_cross = set(restore_cross).intersection(set(origin_cross))
+    sum_road = 0
+    for start_cross, end_cross in zip(origin_path[:-1], origin_path[1:]):
+        if start_cross[0] in intersection_cross and end_cross[0] in intersection_cross:
+            sum_road += 1
+    print_cache[-1].append(sum_road * 2 / (len(restore_cross) + len(origin_cross) - 2))
+    # print(sum_road * 2 / (len(restore_cross) + len(origin_cross) - 2))
+
+
+def restore_path(meta_id, start_index, count, k):  # k估计参数权值
     test_path = TestPath(meta_id, start_index, count)
     visual_map4000 = nx.read_gexf('/home/elvis/map/analize/analizeTime/countXEntTime/visualMapTop4000.gexf')
-    k = 0.3  # k估计参数权值
     paths = []
-    while len(paths) == 0:
-        paths = find_paths(test_path.path_time[0], test_path.path_time[-1], visual_map4000, k)
-        k *= 1.1
+    # while len(paths) == 0:
+    #     paths = find_paths(test_path.path_time[0], test_path.path_time[-1], visual_map4000, k)
+    #     k *= 1.1
+    paths = find_paths(test_path.path_time[0], test_path.path_time[-1], visual_map4000, k)
+    if len(paths) == 0:
+        print_cache.append(['{}'.format(meta_id), 0,])
+        # print('{},not find'.format(meta_id))
+        return
     delta_time = (test_path.path_time[-1][1] - test_path.path_time[0][1]).total_seconds()
     map_paths = visual_to_map(paths, delta_time)
     best_path = best_alternative(map_paths, delta_time)
-    file_path = '/home/elvis/map/analize/path_restore/restore_path/{meta_id}/{meta_id}-{s}-{c}'.format(meta_id=meta_id,
-                                                                                                       s=start_index,
-                                                                                                       c=count)
-    to_path_txt(map_paths, file_path)
+    file_path = '/home/elvis/map/analize/path_restore/restore_path/{k}/{meta_id}/{meta_id}-{s}-{c}'.format(
+        meta_id=meta_id,
+        s=start_index,
+        c=count, k=k)
+    to_path_txt(map_paths, file_path, mode='all')
+    best_file_path = '/home/elvis/map/analize/path_restore/restore_path/{k}/{meta_id}/best'.format(meta_id=meta_id, k=k)
+    to_path_txt(best_path, best_file_path, mode='best')
+    print_cache.append(['{}'.format(meta_id),])
+    # print('{}'.format(meta_id), end=' ')
+    similarity(best_path, test_path.path_time)
+
+
+def similarity_from_file(k=0.3):
+    with open('/home/elvis/map/analize/path_restore/test-list.txt', 'r') as f:
+        test_paths = [list(map(int, test_path.strip('\n').split(','))) for test_path in f.readlines()]
+    origin_dir = '/home/elvis/map/analize/path_restore/raw_path/'
+    restore_dir = '/home/elvis/map/analize/path_restore/restore_path/{k}'.format(k=k)
+    for meta_id, start_index, count in test_paths:
+        origin_file = os.path.join(origin_dir, '{i}-{s}-{c}.txt'.format(i=meta_id, s=start_index, c=count))
+        restore_file = os.path.join(restore_dir, '{meta_id}/best.txt'.format(meta_id=meta_id))
+        with open(origin_file, 'r') as f:
+            origin_traj = [traj.strip('\n').split(',') for traj in f.readlines()]
+        with open(restore_file, 'r') as f:
+            restore_traj = [traj.strip('\n').split(',') for traj in f.readlines()]
+        print('{}'.format(meta_id), end=',')
+        similarity(restore_path=restore_traj, origin_path=origin_traj)
+
+
+def restore_from_file(k):
+    with open('/home/elvis/map/analize/path_restore/test-list.txt', 'r') as f:
+        test_paths = [list(map(int, test_path.strip('\n').split(','))) for test_path in f.readlines()]
+    for meta_id, start_index, count in test_paths:
+        time_s = time.time()
+        restore_path(meta_id, start_index, count, k=k)
+        print('{} done'.format(meta_id))
+        print_cache[-1].append('{}'.format(time.time() - time_s))
+        # print('time:{}'.format(time.time() - time_s))
+
+
+if __name__ == '__main__':
+    time_s = time.time()
+    print_cache = []
+    # similarity_from_file(k=0.3)
+    # meta_id, start_index, count = 1157,35,24
+    # restore_path(meta_id, start_index, count, k=0.3)
+    restore_from_file(k=0.5)
+    for meta_id, sim, run_time in print_cache:
+        print(meta_id, sim, run_time)
 
     print('using time: {}'.format(time.time() - time_s))
